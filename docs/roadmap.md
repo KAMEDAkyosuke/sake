@@ -17,7 +17,8 @@ It proved the approach. It is unusable by anyone who will not read shell.
 
 None of its code is here, deliberately. What came across is the reasoning, in
 `wine-build.md`, `runtime.md`, `licensing.md` and `layout.md`. Every claim in those files
-says where and when it was measured; sake itself has verified none of it.
+says where and when it was measured. Most of it is still the prototype's; where sake has
+since measured something itself, the section says so and carries its own date.
 
 ## Phases
 
@@ -36,9 +37,13 @@ current step, and a failure that says "the Game Porting Toolkit is not mounted" 
 printing a non-zero exit status.
 
 Standing so far: the preflight checks — Apple silicon, Rosetta 2, the Command Line Tools,
-the Game Porting Toolkit, disk space — and the two pieces the rest of the phase sits on, the
-on-disk layout as a value type and a subprocess runner that streams output and can be
-cancelled. Nothing downloads or builds yet.
+the Game Porting Toolkit, disk space — the two pieces the rest of the phase sits on (the
+on-disk layout as a value type, and a subprocess runner that streams output and can be
+cancelled), fetching the eleven sources against pinned hashes, and building the nine tools
+and libraries into the engine prefix. That last one ran end to end on 2026-09-19.
+
+Left: Wine's own configure, make and install, rewriting the sonames it records, and the
+guided D3DMetal step.
 
 ### Phase 3 — bottles and titles
 

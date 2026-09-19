@@ -5,7 +5,7 @@ import Testing
 
 @Test func theLayoutIsTheOneDocumented() {
     let paths = Paths(
-        applicationSupport: URL(filePath: "/tmp/support"),
+        root: URL(filePath: "/tmp/support"),
         cache: URL(filePath: "/tmp/cache")
     )
 
@@ -18,10 +18,12 @@ import Testing
     #expect(paths.d3dMetalFramework.path == "/tmp/support/engine/lib/external/D3DMetal.framework")
 }
 
-@Test func theDefaultRootsAreOutsideTheAppBundle() {
+@Test func theDefaultRootsAreOutsideTheAppBundleAndFreeOfSpaces() {
     let paths = Paths.default
     let home = FileManager.default.homeDirectoryForCurrentUser.path
 
-    #expect(paths.applicationSupport.path == "\(home)/Library/Application Support/Sake")
+    #expect(paths.root.path == "\(home)/Library/Sake")
     #expect(paths.cache.path == "\(home)/Library/Caches/Sake")
+    // A space in the engine path breaks every autotools configure. See docs/layout.md.
+    #expect(!paths.engine.path.dropFirst(home.count).contains(" "))
 }

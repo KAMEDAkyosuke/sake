@@ -43,7 +43,7 @@ public struct SourceFetcher: Sendable {
                 for component in components {
                     if Task.isCancelled { break }
 
-                    if FileManager.default.fileExists(atPath: component.unpackedURL(in: paths).path) {
+                    if component.isUnpacked(in: paths) {
                         continuation.yield(.alreadyInPlace(component))
                         continue
                     }

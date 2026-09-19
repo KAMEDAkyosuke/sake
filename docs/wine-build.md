@@ -3,8 +3,10 @@
 What the build has to do, and which parts of it are not negotiable.
 
 Everything here was learned in the d4-mac prototype between 2026-08 and 2026-09-17, on one
-machine (Apple silicon, macOS 27.0). **sake has not built anything yet.** Treat this as the
-specification the Swift implementation has to satisfy, not as a report on sake's behaviour.
+machine (Apple silicon, macOS 27.0), unless a section says otherwise. **sake has built the
+prefix — the nine tools and libraries below — on 2026-09-19, and has not yet built Wine
+itself.** Treat the rest as the specification the Swift implementation has to satisfy, not
+as a report on sake's behaviour.
 
 ## Why CrossOver's sources and not upstream Wine
 
@@ -78,9 +80,9 @@ clang is *not* required; the Mach-O side builds with stock Apple clang.
 
 ## Ordering traps
 
-- **The build must run under Rosetta**, so the host tools it generates and then executes
-  (winebuild, widl, wrc, makedep) are x86_64 like the target. Wrap the *build* in
-  `arch -x86_64`.
+- **The build must produce x86_64 host tools**, because it generates and then executes them
+  (winebuild, widl, wrc, makedep). The prototype got that by wrapping the *build* in
+  `arch -x86_64`; with the Command Line Tools alone that route is closed — see below.
 - **Never wrap a Wine *run* in `arch -x86_64`.** `arch` is a hardened system binary, so
   exec'ing it strips every `DYLD_*` variable. Wine's binaries are already x86_64, so Rosetta
   handles them anyway.
@@ -88,6 +90,31 @@ clang is *not* required; the Mach-O side builds with stock Apple clang.
   so installing D3DMetal has to happen *after* every `make install`, not once.
 - **Sonames must be absolute or `@loader_path`-relative, never leaf names.** See
   `layout.md` — `DYLD_LIBRARY_PATH` does not reach Wine's child processes.
+
+### The wrapping no longer works with the Command Line Tools alone
+
+Measured in sake on 2026-09-19 (CLT 27.0, macOS 27.0). This one is not the prototype's.
+
+`/usr/bin/make` and `/usr/bin/clang` are universal, but they are xcode-select shims that
+`dlopen` `libxcrun.dylib` — and that library ships arm64 and arm64e only. The real binaries
+behind them, in `/Library/Developer/CommandLineTools/usr/bin`, are arm64-only. Under
+`arch -x86_64` the shim reports `missing compatible architecture (need 'x86_64')` and the
+real binary reports `Bad CPU type in executable`. Xcode 26.4's copies of both are universal,
+so pointing `DEVELOPER_DIR` at Xcode brings the wrapping back — at the price of requiring
+Xcode.
+
+What works with the Command Line Tools alone is to run the tools natively and name the
+target out loud: every `configure` gets `--host=x86_64-apple-darwin
+--build=x86_64-apple-darwin` **and** `CC="clang -arch x86_64"`. Autoconf then believes it is
+a native x86_64 build and runs its test programs, which Rosetta executes — which is what the
+wrapping used to buy.
+
+`CC` is not optional. With the triplet alone, gmp compiles x86_64 assembly and hands it to
+an arm64 assembler: `tmp-add_err1_n.s: error: invalid operand / pop %rbx`.
+
+Verified by building the nine tools and libraries this way on 2026-09-19: all nine landed as
+x86_64, and the two that produce executables run. **Wine's own configure is not verified this
+way** — the prototype passed it no triplet at all and leaned on the wrapping instead.
 
 ## Prefix creation
 

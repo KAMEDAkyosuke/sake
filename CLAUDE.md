@@ -92,8 +92,10 @@ implementing anything it covers.
 
 Two standing rules about that content:
 
-- **Everything in `docs/` was measured in the `d4-mac` prototype, not in sake.** Claims
-  carry their source and date. Do not restate them as sake's own behaviour.
+- **Claims in `docs/` carry their source and date.** Most were measured in the prototype and
+  not in sake; do not restate those as sake's own behaviour. Where sake has measured
+  something itself the section says so and gives the date — keep that distinction, and date
+  what you add.
 - **Do not relitigate the Swift/subprocess boundary** without new information;
   `docs/roadmap.md` records why it is where it is.
 

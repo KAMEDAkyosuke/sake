@@ -7,28 +7,42 @@ struct SetupView: View {
     @State private var sources: [String: SourceStatus] = [:]
     @State private var fetch: Task<Void, Never>?
     @State private var fetchGeneration = 0
+    @State private var prefix: [String: PrefixStatus] = [:]
+    @State private var build: Task<Void, Never>?
+    @State private var buildGeneration = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            PreflightView(requirements: requirements, isChecking: isChecking) {
-                Task { await check() }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                PreflightView(requirements: requirements, isChecking: isChecking) {
+                    Task { await check() }
+                }
+
+                Divider()
+
+                SourcesView(
+                    statuses: sources,
+                    isFetching: fetch != nil,
+                    canStart: machineIsReady,
+                    start: startFetching,
+                    stop: stopFetching
+                )
+
+                Divider()
+
+                PrefixView(
+                    statuses: prefix,
+                    isBuilding: build != nil,
+                    canStart: machineIsReady,
+                    start: startBuilding,
+                    stop: stopBuilding
+                )
             }
-
-            Divider()
-
-            SourcesView(
-                statuses: sources,
-                isFetching: fetch != nil,
-                canStart: machineIsReady,
-                start: startFetching,
-                stop: stopFetching
-            )
-
-            Spacer(minLength: 0)
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(24)
-        .frame(minWidth: 460, idealWidth: 560, maxWidth: .infinity,
-               minHeight: 260, maxHeight: .infinity, alignment: .topLeading)
+        .frame(minWidth: 480, idealWidth: 620, maxWidth: .infinity,
+               minHeight: 360, maxHeight: .infinity)
         .task { await check() }
     }
 
@@ -40,6 +54,20 @@ struct SetupView: View {
         isChecking = true
         defer { isChecking = false }
         requirements = await Preflight.run()
+        survey()
+    }
+
+    /// What is already on disk. Without this the rows all read "waiting" until a run is
+    /// started, however much of the work is already done.
+    private func survey() {
+        let paths = Paths.default
+        for component in Component.all where component.isUnpacked(in: paths) {
+            sources[component.id] = .inPlace
+        }
+        let prefixURL = PrefixBuilder(paths: paths).prefix
+        for recipe in BuildRecipe.all where recipe.isBuilt(in: prefixURL) {
+            prefix[recipe.id] = .alreadyBuilt
+        }
     }
 
     private func startFetching() {
@@ -52,7 +80,10 @@ struct SetupView: View {
             }
             // A stopped run finishes winding down after the next one has started, and must
             // not clear that one's handle.
-            if generation == fetchGeneration { fetch = nil }
+            if generation == fetchGeneration {
+                fetch = nil
+                survey()
+            }
         }
     }
 
@@ -80,6 +111,48 @@ struct SetupView: View {
             }
         case .failed(let component, let reason):
             sources[component.id] = .failed(reason)
+        case .finished:
+            break
+        }
+    }
+
+    private func startBuilding() {
+        guard build == nil else { return }
+        buildGeneration += 1
+        let generation = buildGeneration
+        build = Task {
+            for await event in PrefixBuilder().build() {
+                apply(event)
+            }
+            if generation == buildGeneration {
+                build = nil
+                survey()
+            }
+        }
+    }
+
+    private func stopBuilding() {
+        buildGeneration += 1
+        build?.cancel()
+        build = nil
+    }
+
+    private func apply(_ event: BuildEvent) {
+        switch event {
+        case .alreadyBuilt(let recipe):
+            prefix[recipe.id] = .alreadyBuilt
+        case .started(let recipe):
+            prefix[recipe.id] = .working(phase: "starting", line: "")
+        case .phase(let recipe, let phase):
+            prefix[recipe.id] = .working(phase: phase.rawValue, line: "")
+        case .output(let recipe, let line):
+            if case .working(let phase, _) = prefix[recipe.id] {
+                prefix[recipe.id] = .working(phase: phase, line: line)
+            }
+        case .installed(let recipe):
+            prefix[recipe.id] = .built
+        case .failed(let recipe, let reason, _):
+            prefix[recipe.id] = .failed(reason)
         case .finished:
             break
         }

@@ -88,7 +88,7 @@ private func collect(_ stream: AsyncStream<FetchEvent>) async -> [FetchEvent] {
     defer { try? FileManager.default.removeItem(at: root) }
     let archive = try await makeArchive(in: root, name: "thing-1.0")
 
-    let paths = Paths(applicationSupport: root.appending(path: "support"),
+    let paths = Paths(root: root.appending(path: "support"),
                       cache: root.appending(path: "cache"))
     let component = Component(
         id: "thing", version: "1.0", url: archive,
@@ -110,7 +110,7 @@ private func collect(_ stream: AsyncStream<FetchEvent>) async -> [FetchEvent] {
     defer { try? FileManager.default.removeItem(at: root) }
     let archive = try await makeArchive(in: root, name: "thing-1.0")
 
-    let paths = Paths(applicationSupport: root.appending(path: "support"),
+    let paths = Paths(root: root.appending(path: "support"),
                       cache: root.appending(path: "cache"))
     let component = Component(
         id: "thing", version: "1.0", url: archive,
@@ -132,7 +132,7 @@ private func collect(_ stream: AsyncStream<FetchEvent>) async -> [FetchEvent] {
     defer { try? FileManager.default.removeItem(at: root) }
     let archive = try await makeArchive(in: root, name: "thing-1.0")
 
-    let paths = Paths(applicationSupport: root.appending(path: "support"),
+    let paths = Paths(root: root.appending(path: "support"),
                       cache: root.appending(path: "cache"))
     let component = Component(
         id: "thing", version: "1.0", url: archive,

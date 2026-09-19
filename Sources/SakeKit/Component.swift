@@ -54,6 +54,10 @@ public struct Component: Sendable, Identifiable, Equatable {
     public func unpackedURL(in paths: Paths) -> URL {
         destinationURL(in: paths).appending(path: unpacked)
     }
+
+    public func isUnpacked(in paths: Paths) -> Bool {
+        FileManager.default.fileExists(atPath: unpackedURL(in: paths).path)
+    }
 }
 
 extension Component {

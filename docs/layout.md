@@ -3,13 +3,14 @@
 Where sake puts things, and why the obvious alternative does not work.
 
 Everything below was measured on 2026-09-18 against the d4-mac prototype's tree, on one
-machine (Apple silicon, macOS 27.0, CLT 27.0). sake has verified none of it in its own code.
+machine (Apple silicon, macOS 27.0, CLT 27.0), except where a section carries its own date —
+those were measured in sake.
 
 ## The layout
 
 ```
 /Applications/Sake.app                       the app, and nothing else
-~/Library/Application Support/Sake/
+~/Library/Sake/
     engine/                                  the Wine build and its libraries, ~1.2 GB
     bottles/                                 prefixes and the games in them, tens of GB
 ~/Library/Caches/Sake/
@@ -18,6 +19,36 @@ machine (Apple silicon, macOS 27.0, CLT 27.0). sake has verified none of it in i
 
 Uninstalling is an explicit action in the app, not a side effect of dragging the bundle to
 the Trash.
+
+## Why not Application Support
+
+Measured in sake on 2026-09-19. `~/Library/Application Support/Sake` is the obvious home and
+it does not work: the engine is an autotools `--prefix`, and the space in "Application
+Support" splits back out of `CPPFLAGS` and `LDFLAGS` the moment a configure script expands
+them. Every one of the eight library builds failed the same way:
+
+```
+clang: error: no such file or directory: 'Support/Sake/engine/include'
+```
+
+What was tried, on pkgconf:
+
+| | |
+|---|---|
+| the path as it is | fails |
+| `-I/path/with\ space/include` | fails |
+| `-I"/path/with space/include"` | fails |
+| a space-free symlink to it, passed as `--prefix` and in the flags | works |
+
+Escaping and quoting cannot work: the shell does not remove quotes or honour backslashes in
+the *result* of expanding a variable, so `$CPPFLAGS` is word-split and that is that. The
+symlink does work, but what gets baked in is then the link's path — `pkgconf` installed that
+way reports the link in its `pc_path` — so the link becomes load-bearing forever. A root
+without a space costs nothing by comparison.
+
+macOS does not allow a space in an account's short name, so `/Users/<name>` is safe. A
+volume name is where one would realistically appear (this machine boots from
+`Macintosh HD`), which matters the day the location becomes something the user picks.
 
 ## Why nothing mutable goes inside the bundle
 
@@ -129,12 +160,13 @@ away the diagnostic tool exactly when it is needed. Its numbers: 146 characters 
 | root | resulting soname length |
 |---|---|
 | `~/.local/share/d4-mac` (the prototype, known good) | ~76 |
-| `~/Library/Application Support/Sake` | ~92 |
+| `~/Library/Application Support/Sake` (rejected above) | ~92 |
+| `~/Library/Sake` | ~65 |
 
-**92 is in the untested gap between the two known points.** Measure it before committing the
-engine to that path — and note that `@loader_path`-relative sonames, which are short, remove
-the problem entirely if they land first.
+The 92 that sat in the untested gap between the two known points is no longer a question to
+answer: `~/Library/Sake` comes out at 65 on a fifteen-character user name, shorter than the
+length already known to work. `@loader_path`-relative sonames would remove the constraint
+altogether and are still worth doing, but nothing depends on them now.
 
-sake's `Paths` therefore takes both roots as parameters rather than baking them in, so that
-moving the engine when this is measured does not reach into every caller. The measurement
-itself has not been made.
+`Paths` still takes both roots as parameters, so a root that turns out to be wrong again does
+not reach into every caller.

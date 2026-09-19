@@ -2,29 +2,28 @@ import Foundation
 
 /// Where sake keeps things on disk, as `docs/layout.md` specifies it.
 ///
-/// The roots are parameters rather than constants because the engine path is not settled:
-/// `~/Library/Application Support/Sake` produces sonames around 92 characters, which sits in
-/// the gap between a length known to work (76) and one known to kill the process through
-/// Wine's debug buffer (146). Nothing here has measured that.
+/// `~/Library/Sake` and not `~/Library/Application Support/Sake`: the engine is an autotools
+/// `--prefix`, and a space in it word-splits out of `CPPFLAGS` and `LDFLAGS` the moment any
+/// configure script expands them. See docs/layout.md.
 public struct Paths: Sendable, Equatable {
-    public let applicationSupport: URL
+    public let root: URL
     public let cache: URL
 
-    public init(applicationSupport: URL, cache: URL) {
-        self.applicationSupport = applicationSupport
+    public init(root: URL, cache: URL) {
+        self.root = root
         self.cache = cache
     }
 
     public static var `default`: Paths {
         let home = FileManager.default.homeDirectoryForCurrentUser
         return Paths(
-            applicationSupport: home.appending(path: "Library/Application Support/Sake"),
+            root: home.appending(path: "Library/Sake"),
             cache: home.appending(path: "Library/Caches/Sake")
         )
     }
 
-    public var engine: URL { applicationSupport.appending(path: "engine") }
-    public var bottles: URL { applicationSupport.appending(path: "bottles") }
+    public var engine: URL { root.appending(path: "engine") }
+    public var bottles: URL { root.appending(path: "bottles") }
 
     public var downloads: URL { cache.appending(path: "dl") }
     public var sources: URL { cache.appending(path: "sources") }

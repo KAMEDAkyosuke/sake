@@ -48,6 +48,28 @@ private let shell = URL(filePath: "/bin/sh")
     #expect(result.standardError.hasSuffix("err 19999\n"))
 }
 
+/// What a `make -j` build actually does: one stream goes quiet for a long time while the
+/// other fills its pipe. A reader that serialises the two streams hangs here.
+@Test func doesNotDeadlockWhenStandardOutputIsQuietWhileStandardErrorOverflows() async throws {
+    let script = "i=0; while [ $i -lt 20000 ]; do echo \"err $i\" >&2; i=$((i+1)); done; echo done"
+    let result = try await ProcessRunner().run(
+        Command(executable: shell, arguments: ["-c", script])
+    )
+
+    #expect(result.standardOutput == "done\n")
+    #expect(result.standardError.utf8.count > 65536)
+}
+
+@Test func doesNotDeadlockWhenStandardErrorIsTheQuietOne() async throws {
+    let script = "i=0; while [ $i -lt 20000 ]; do echo \"out $i\"; i=$((i+1)); done; echo done >&2"
+    let result = try await ProcessRunner().run(
+        Command(executable: shell, arguments: ["-c", script])
+    )
+
+    #expect(result.standardError == "done\n")
+    #expect(result.standardOutput.utf8.count > 65536)
+}
+
 @Test func streamsLinesAsTheyArrive() async throws {
     let collected = Collector()
     _ = try await ProcessRunner().run(

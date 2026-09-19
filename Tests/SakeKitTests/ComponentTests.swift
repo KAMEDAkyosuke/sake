@@ -31,7 +31,7 @@ import Testing
 }
 
 @Test func crossoverUnpacksIntoTheCacheRootBecauseItsPathsStartWithSources() {
-    let paths = Paths(applicationSupport: URL(filePath: "/tmp/s"), cache: URL(filePath: "/tmp/c"))
+    let paths = Paths(root: URL(filePath: "/tmp/s"), cache: URL(filePath: "/tmp/c"))
     let crossover = Component.all.first { $0.id == "crossover" }!
 
     #expect(crossover.destinationURL(in: paths).path == "/tmp/c")
@@ -40,10 +40,30 @@ import Testing
 }
 
 @Test func theToolchainDoesNotLandWithTheSources() {
-    let paths = Paths(applicationSupport: URL(filePath: "/tmp/s"), cache: URL(filePath: "/tmp/c"))
+    let paths = Paths(root: URL(filePath: "/tmp/s"), cache: URL(filePath: "/tmp/c"))
     let mingw = Component.all.first { $0.id == "llvm-mingw" }!
 
     #expect(mingw.unpackedURL(in: paths).path
             == "/tmp/c/toolchain/llvm-mingw-20260908-ucrt-macos-universal")
     #expect(mingw.archiveURL(in: paths).path == "/tmp/c/dl/llvm-mingw-20260908.tar.xz")
+}
+
+@Test func whatIsOnDiskIsWhatCountsAsPresent() throws {
+    let root = FileManager.default.temporaryDirectory.appending(path: "sake-present-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paths = Paths(root: root.appending(path: "engine-root"), cache: root.appending(path: "cache"))
+    let gmp = Component.all.first { $0.id == "gmp" }!
+    let recipe = BuildRecipe.all.first { $0.componentID == "gmp" }!
+    let prefix = paths.engine
+
+    #expect(!gmp.isUnpacked(in: paths))
+    #expect(!recipe.isBuilt(in: prefix))
+
+    try FileManager.default.createDirectory(at: gmp.unpackedURL(in: paths), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+        at: recipe.productURL(in: prefix).deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data().write(to: recipe.productURL(in: prefix))
+
+    #expect(gmp.isUnpacked(in: paths))
+    #expect(recipe.isBuilt(in: prefix))
 }

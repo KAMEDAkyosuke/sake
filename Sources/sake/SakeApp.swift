@@ -12,6 +12,6 @@ struct SakeApp: App {
         .windowResizability(.contentMinSize)
         // A flexible frame otherwise opens at SwiftUI's own 900x450, which is wider than
         // the text wants to be.
-        .defaultSize(width: 560, height: 460)
+        .defaultSize(width: 620, height: 720)
     }
 }

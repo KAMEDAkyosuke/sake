@@ -140,22 +140,53 @@ public struct ProcessRunner: Sendable {
         }
     }
 
+    /// Not `FileHandle.bytes`: every AsyncBytes iterator in the process shares one serial
+    /// queue and does a blocking `read(2)` on it, so draining a stream that has gone quiet
+    /// stops the other stream from being drained at all, and the child then blocks once its
+    /// 64 KiB fills. A readability handler gets a queue per handle. Measured against a
+    /// `make -j10` that sat at 0% CPU for 30 minutes, 2026-09-19.
     private static func drain(
         _ pipe: Pipe,
         wrap: @Sendable @escaping (String) -> OutputLine,
         to deliver: SerialDelivery
     ) async -> String {
         var text = ""
-        do {
-            for try await line in pipe.fileHandleForReading.bytes.lines {
-                text += line
-                text += "\n"
-                deliver(wrap(line))
-            }
-        } catch {
-            // The child died mid-write. Whatever was read before that is still the truth.
+        var carry: [UInt8] = []
+
+        func emit(_ bytes: ArraySlice<UInt8>) {
+            var line = String(decoding: bytes, as: UTF8.self)
+            if line.hasSuffix("\r") { line.removeLast() }
+            text += line
+            text += "\n"
+            deliver(wrap(line))
         }
+
+        for await chunk in readableChunks(of: pipe) {
+            carry.append(contentsOf: chunk)
+            while let newline = carry.firstIndex(of: UInt8(ascii: "\n")) {
+                emit(carry[..<newline])
+                carry.removeFirst(newline + 1)
+            }
+        }
+        if !carry.isEmpty { emit(carry[...]) }
+
         return text
+    }
+
+    private static func readableChunks(of pipe: Pipe) -> AsyncStream<Data> {
+        AsyncStream { continuation in
+            let handle = pipe.fileHandleForReading
+            handle.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty {
+                    handle.readabilityHandler = nil
+                    continuation.finish()
+                } else {
+                    continuation.yield(data)
+                }
+            }
+            continuation.onTermination = { _ in handle.readabilityHandler = nil }
+        }
     }
 }
 
