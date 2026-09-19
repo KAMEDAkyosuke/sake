@@ -2,49 +2,33 @@ import SakeKit
 import SwiftUI
 
 struct PreflightView: View {
-    @State private var requirements: [Requirement] = []
-    @State private var isChecking = false
+    let requirements: [Requirement]
+    let isChecking: Bool
+    let recheck: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Before sake builds anything")
-                    .font(.title2.weight(.semibold))
-                Text("Nothing has been downloaded or built yet. These are what decide whether it can be.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(requirements) { requirement in
-                    RequirementRow(requirement: requirement)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("This Mac")
+                        .font(.title2.weight(.semibold))
+                    Text("What decides whether sake can build anything here.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            }
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 8) {
+                Spacer()
                 if isChecking {
                     ProgressView().controlSize(.small)
                 }
-                Spacer()
-                Button("Check Again") {
-                    Task { await check() }
-                }
-                .disabled(isChecking)
+                Button("Check Again", action: recheck)
+                    .disabled(isChecking)
+            }
+
+            ForEach(requirements) { requirement in
+                RequirementRow(requirement: requirement)
             }
         }
-        .padding(24)
-        .frame(minWidth: 460, idealWidth: 560, maxWidth: .infinity,
-               minHeight: 260, maxHeight: .infinity, alignment: .topLeading)
-        .task { await check() }
-    }
-
-    private func check() async {
-        isChecking = true
-        defer { isChecking = false }
-        requirements = await Preflight.run()
     }
 }
 

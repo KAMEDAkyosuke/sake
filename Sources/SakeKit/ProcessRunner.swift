@@ -54,8 +54,15 @@ public struct CommandResult: Sendable, Equatable {
     public var succeeded: Bool { exitStatus == 0 }
 }
 
-public enum CommandError: Error, Equatable {
+public enum CommandError: Error, Equatable, LocalizedError {
     case launchFailed(executable: URL, reason: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .launchFailed(let executable, let reason):
+            "Could not run \(executable.path): \(reason)"
+        }
+    }
 }
 
 public struct ProcessRunner: Sendable {

@@ -7,7 +7,7 @@ struct SakeApp: App {
         // the File menu would offer a second copy of the same state. Not a UtilityWindow
         // either -- see docs/layout.md.
         Window("Sake", id: "main") {
-            PreflightView()
+            SetupView()
         }
         .windowResizability(.contentMinSize)
         // A flexible frame otherwise opens at SwiftUI's own 900x450, which is wider than
