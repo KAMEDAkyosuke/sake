@@ -163,10 +163,21 @@ done:
 - An x86_64 dylib placed in that directory `dlopen`s all four by those exact strings — and
   still does after the whole engine tree is moved elsewhere.
 
-What that does not show is Wine itself loading them, which needs a prefix to run in. Rows
-five and six of the table survive as expected: `ntdll.so` and `bin/wine` still carry
+Rows five and six of the table survive as expected: `ntdll.so` and `bin/wine` still carry
 `engine/{bin,lib,lib/wine,share/wine}`, which is what Wine recomputes from `dladdr` at
 startup rather than trusting.
+
+**Wine itself loading them**, which this file previously listed as the remaining unknown,
+was measured on 2026-09-19 once there was a prefix to run in:
+
+- `DYLD_PRINT_LIBRARIES=1` over a `wine reg query` shows dyld loading
+  `engine/lib/libfreetype.6.dylib` and `engine/lib/libSDL2-2.0.0.dylib`. Their only openers
+  are `win32u.so` and `winebus.so` in `lib/wine/x86_64-unix/`, so that is the `@loader_path`
+  hop being taken, not a lucky absolute path.
+- MoltenVK prints its own banner during `wineboot --init` (`MoltenVK version 1.4.2,
+  supporting Vulkan version 1.4.357`), so `libMoltenVK.dylib` loaded as well.
+- **gnutls is the one still unobserved.** `bcrypt.so` opens it when something asks for TLS,
+  and nothing has yet. The soname is written the same way as the other three.
 
 ## Path length is a real constraint, and the new path is untested
 

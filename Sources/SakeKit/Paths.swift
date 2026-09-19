@@ -25,6 +25,9 @@ public struct Paths: Sendable, Equatable {
     public var engine: URL { root.appending(path: "engine") }
     public var bottles: URL { root.appending(path: "bottles") }
 
+    /// One bottle is one `WINEPREFIX`, with the games inside it in `drive_c`.
+    public func bottle(named name: String) -> URL { bottles.appending(path: name) }
+
     public var downloads: URL { cache.appending(path: "dl") }
     public var sources: URL { cache.appending(path: "sources") }
     public var toolchain: URL { cache.appending(path: "toolchain") }
@@ -48,4 +51,9 @@ public struct Paths: Sendable, Equatable {
     /// beside the framework rather than beside the `.so` files that load it: it resolves
     /// `@rpath/D3DMetal.framework/D3DMetal` relative to its own location. See docs/runtime.md.
     public var d3dMetalFramework: URL { engine.appending(path: "lib/external/D3DMetal.framework") }
+
+    /// Apple's Rosetta bridge, in the same directory as the framework for the reason above.
+    /// The D3DMetal install puts it there and every wine run names it, so it is spelled
+    /// once. See docs/runtime.md.
+    public var d3dSharedLibrary: URL { engine.appending(path: "lib/external/libd3dshared.dylib") }
 }

@@ -5,10 +5,10 @@ What the build has to do, and which parts of it are not negotiable.
 Everything here was learned in the d4-mac prototype between 2026-08 and 2026-09-17, on one
 machine (Apple silicon, macOS 27.0), unless a section says otherwise. **sake produced the
 nine components below and then built Wine itself on 2026-09-19** — configure, the soname
-rewrite, make and install, 4m40s for Wine on ten cores, 1.1 GB of engine. What it has not
-done is run what it built: that needs a prefix, and creating one is the next piece. Treat
-anything not marked as sake's own measurement as the specification the implementation has to
-satisfy rather than a report on its behaviour.
+rewrite, make and install, 4m40s for Wine on ten cores, 1.1 GB of engine. Later the same day
+it created a prefix with that engine and Wine came up clean; see `runtime.md`. What it has
+not run is a game. Treat anything not marked as sake's own measurement as the specification
+the implementation has to satisfy rather than a report on its behaviour.
 
 ## Why CrossOver's sources and not upstream Wine
 

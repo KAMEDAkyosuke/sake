@@ -3,21 +3,22 @@
 Run Windows games on an Apple silicon Mac, by building CrossOver's Wine from CodeWeavers'
 published LGPL sources — with a GUI, so it does not take a terminal.
 
-## Status: it builds an engine, and nothing has been run under it
+## Status: it builds an engine and starts it, and no game runs yet
 
 **No game runs.** What the app does today is answer whether this Mac can do the rest — Apple
 silicon, Rosetta 2, the Command Line Tools, Apple's Game Porting Toolkit, room on disk —
 then download the eleven sources, check them against known hashes, unpack them, build the
-tools and libraries Wine is configured against, build CrossOver's Wine itself, and guide
-Apple's D3DMetal in from an image you mounted. That is a complete 1.1 GB engine that has
-never been started. Between it and a game there is a prefix to create and a way to launch a
-title. If you were looking for something that runs a game today, this is not it.
+tools and libraries Wine is configured against, build CrossOver's Wine itself, guide Apple's
+D3DMetal in from an image you mounted, and make a bottle with the result. That last step is
+where the 1.1 GB engine first runs: Wine comes up, WoW64 initialises, and the libraries that
+were built for it load. There is still no game in the bottle and no way to start one. If you
+were looking for something that runs a game today, this is not it.
 
 What is here:
 
 | | |
 |---|---|
-| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build and the D3DMetal step |
+| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the D3DMetal step and the bottle |
 | `Sources/sake/` | the SwiftUI app, kept thin |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
 | `scripts/build-app.sh` | builds `target/Sake.app` |
@@ -69,7 +70,7 @@ itself say so and carry their own date.
 |---|---|
 | `docs/roadmap.md` | the goal, the phases, and where Swift stops and subprocesses start |
 | `docs/wine-build.md` | building Wine from CrossOver's sources; the flags that cannot be dropped |
-| `docs/runtime.md` | the three settings that make games run, the Play-button root cause, controllers, and how to tell four failure states apart |
+| `docs/runtime.md` | creating a prefix, the three settings that make games run, the Play-button root cause, controllers, and how to tell four failure states apart |
 | `docs/licensing.md` | what may and may not be redistributed, and why D3DMetal is unavoidable |
 | `docs/layout.md` | where files go, why nothing mutable lives in the app bundle, and what pins a built tree to its path |
 

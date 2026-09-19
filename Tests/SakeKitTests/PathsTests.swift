@@ -18,6 +18,23 @@ import Testing
     #expect(paths.wineBuild.path == "/tmp/cache/build/wine")
     #expect(paths.wineUnixLibraries.path == "/tmp/support/engine/lib/wine/x86_64-unix")
     #expect(paths.d3dMetalFramework.path == "/tmp/support/engine/lib/external/D3DMetal.framework")
+    #expect(paths.bottle(named: "default").path == "/tmp/support/bottles/default")
+}
+
+@Test func theRosettaBridgeSitsBesideTheFrameworkItResolves() {
+    let paths = Paths(
+        root: URL(filePath: "/tmp/support"),
+        cache: URL(filePath: "/tmp/cache")
+    )
+
+    // libd3dshared resolves `@rpath/D3DMetal.framework/D3DMetal` relative to its own
+    // location, so moving one of these without the other breaks D3DMetal with no symptom
+    // that names either file. See docs/runtime.md.
+    #expect(
+        paths.d3dSharedLibrary.deletingLastPathComponent().path
+            == paths.d3dMetalFramework.deletingLastPathComponent().path
+    )
+    #expect(paths.d3dSharedLibrary.lastPathComponent == "libd3dshared.dylib")
 }
 
 @Test func aLoaderPathSonameReachesTheEngineLibraries() {

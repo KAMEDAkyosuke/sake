@@ -246,9 +246,7 @@ public struct D3DMetalInstaller: Sendable {
 
         let library = paths.wineUnixLibraries.appending(path: "libd3dshared.dylib")
         try? manager.removeItem(at: library)
-        try manager.copyItem(
-            at: paths.engine.appending(path: "lib/external/libd3dshared.dylib"), to: library
-        )
+        try manager.copyItem(at: paths.d3dSharedLibrary, to: library)
 
         try? manager.removeItem(at: unixFramework)
         try manager.createSymbolicLink(

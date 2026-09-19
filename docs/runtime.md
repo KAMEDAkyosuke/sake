@@ -2,8 +2,48 @@
 
 A built Wine is not a working one. This is what the d4-mac prototype needed on top of the
 build to get Diablo IV from "starts" to "plays", verified 2026-09-17 and 2026-09-18 on one
-machine. **sake has run none of it.** The one piece it has built is the file layout D3DMetal
-needs, dated below; everything about behaviour is still the prototype's.
+machine. **sake has now started Wine, but not a game.** It creates prefixes, dated in the
+next section, and it builds the file layout D3DMetal needs; everything past that is still
+the prototype's.
+
+## Creating a prefix
+
+`wine wineboot --init` makes it, and `wineserver -w` is where it finishes — Wine's processes
+outlive the command that started them, so returning from wineboot is not the end.
+
+**`WINEDLLOVERRIDES="mscoree,mshtml=d"`, or wineboot never returns.** Without it wineboot
+puts up the Wine Mono installer's dialog and waits for a click that never comes: 0% CPU
+inside `CFRunLoopRun` → `mach_msg` forever, and `syswow64` is never populated. (Prototype,
+2026-09-17.)
+
+**An empty `syswow64` is the one check worth making.** It means WoW64 did not initialise, so
+no 32-bit application will run — and Battle.net's launcher is 32-bit. Everything else about
+the prefix looks finished when this is what happened.
+
+**Turn the crash dialog off before anything can crash**: `ShowCrashDialog=0` under
+`HKCU\Software\Wine\WineDbg`. Otherwise a crash spawns `winedbg --auto`, which puts up a
+dialog and holds the process until somebody clicks Close — an unattended command just blocks
+until it times out — and resets `WINEDEBUG` on the way, so suppressed logging comes roaring
+back into whatever was being debugged. (Prototype, 2026-09-18.)
+
+sake created its first bottle on 2026-09-19 (Apple M5, macOS 27.0, against the engine built
+the same day). What that cost and what came out:
+
+| | |
+|---|---|
+| `wineboot --init` | 17.2 s, first run, nothing warm |
+| `wineserver -w`, the registry write, shutdown | 4.0 s |
+| the bottle | 997 MB, 801 files in `system32` and 841 in `syswow64` |
+| everything Wine printed | MoltenVK's three-line banner. No `err:`, no `fixme:`, nothing else |
+
+Two things in a fresh bottle that a path in this document may not lead you to expect:
+
+- **The Windows user is `crossover`,** not the account's short name — `drive_c/users/crossover`.
+  CrossOver's tree does this, and the prototype's bottle has the same directory, so every
+  `drive_c/users/<user>/…` path below means that one.
+- **`dosdevices` maps whatever was mounted at the time.** A bottle created while Apple's
+  Game Porting Toolkit is still mounted gets a `d:` pointing into `/Volumes`, which dangles
+  as soon as it is ejected. Harmless, and worth recognising rather than debugging.
 
 ## Three settings carry the whole thing
 

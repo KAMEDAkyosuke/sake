@@ -41,15 +41,22 @@ libraries into the engine prefix, building Wine itself against them — configur
 not upstream's — and guiding Apple's D3DMetal in from an image the user mounted. That leaves
 a 1.1 GB engine.
 
-What it does not do is **run** any of it. Starting Wine needs a prefix, and that is Phase 3.
+What it does not do is **run** a game. Starting Wine at all needs a prefix, and that is
+Phase 3.
 
-### Phase 3 — bottles and titles (next)
+### Phase 3 — bottles and titles (under way)
 
 Creating prefixes, importing an existing install, per-title settings. This is also where the
 prototype's two ntdll patches have to land, and where the three settings in `runtime.md`
 stop being something only the prototype has tried. The per-title knowledge
 is pure data (executable path, arguments, environment, how to recognise its process), so it
 belongs in a declarative form the GUI can read and edit — not in code.
+
+**Creating a prefix is done, as of 2026-09-19**, and it is the first thing here that runs
+what the earlier phases built: wineboot, the wait, the checks that WoW64 came up and that
+Wine found the engine's own libraries, and the crash dialog turned off before anything can
+put one up. `runtime.md` has what that measured. Still to come: importing the games out of
+a CrossOver bottle, the two patches, and what a title profile actually contains.
 
 ### Phase 4 — the GUI proper
 
@@ -77,10 +84,11 @@ easier to read than it was interleaved with `configure` flags.
 
 ## Open questions
 
-- **`@loader_path` sonames under a running Wine.** As of 2026-09-19 sake writes them, a real
-  build carries them, and an x86_64 dylib sitting where Wine's unix libraries sit resolves
-  all four — moved tree included. What is still unwatched is Wine itself loading one. See
-  `layout.md`. (Path length, which used to be the question below this, went away with them.)
+- **gnutls is the last `@loader_path` soname nothing has loaded.** As of 2026-09-19 a
+  running Wine loads freetype, SDL2 and MoltenVK by the rewritten names; `bcrypt.so` opens
+  gnutls only when something asks for TLS, and nothing has yet. See `layout.md`. (This used
+  to be the whole question of whether Wine could load any of them, and path length before
+  that. Both went away.)
 - **How much to generalise beyond one title.** The prototype hard-coded Diablo IV in several
   places (launch arguments, process identification, which directories to import). Phase 3
   has to decide what a title profile actually contains, and one data point is thin.

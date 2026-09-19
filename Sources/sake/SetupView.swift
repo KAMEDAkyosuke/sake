@@ -18,6 +18,10 @@ struct SetupView: View {
     @State private var d3dMetalBlockedBy: String?
     @State private var d3dMetalInstall: Task<Void, Never>?
     @State private var d3dMetalGeneration = 0
+    @State private var bottle: BottleStatus?
+    @State private var bottleBlockedBy: String?
+    @State private var bottleCreate: Task<Void, Never>?
+    @State private var bottleGeneration = 0
 
     var body: some View {
         ScrollView {
@@ -65,6 +69,17 @@ struct SetupView: View {
                     start: startD3DMetal,
                     stop: stopD3DMetal
                 )
+
+                Divider()
+
+                BottleView(
+                    name: Bottle.defaultName,
+                    status: bottle,
+                    blockedBy: bottleBlockedBy,
+                    isCreating: bottleCreate != nil,
+                    start: startBottle,
+                    stop: stopBottle
+                )
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -109,6 +124,15 @@ struct SetupView: View {
         }
         d3dMetalBlockedBy = machineIsReady
             ? installer.missingPrerequisite
+            : "This Mac is not ready yet."
+
+        let bottles = BottleBuilder(paths: paths)
+        if bottles.bottle.exists {
+            let counts = bottles.bottle.systemFileCounts()
+            bottle = .alreadyCreated(system32: counts.system32, sysWoW64: counts.sysWoW64)
+        }
+        bottleBlockedBy = machineIsReady
+            ? bottles.missingPrerequisite
             : "This Mac is not ready yet."
     }
 
@@ -279,6 +303,48 @@ struct SetupView: View {
             d3dMetal = .installed(version: version)
         case .failed(let reason):
             d3dMetal = .failed(reason)
+        case .finished:
+            break
+        }
+    }
+
+    private func startBottle() {
+        guard bottleCreate == nil else { return }
+        bottleGeneration += 1
+        let generation = bottleGeneration
+        bottleCreate = Task {
+            for await event in BottleBuilder().create() {
+                apply(event)
+            }
+            if generation == bottleGeneration {
+                bottleCreate = nil
+                survey()
+            }
+        }
+    }
+
+    private func stopBottle() {
+        bottleGeneration += 1
+        bottleCreate?.cancel()
+        bottleCreate = nil
+    }
+
+    private func apply(_ event: BottleEvent) {
+        switch event {
+        case .alreadyCreated(let system32, let sysWoW64):
+            bottle = .alreadyCreated(system32: system32, sysWoW64: sysWoW64)
+        case .started:
+            bottle = .working(phase: "starting", line: "")
+        case .phase(let phase):
+            bottle = .working(phase: phase.rawValue, line: "")
+        case .output(let line):
+            if case .working(let phase, _) = bottle {
+                bottle = .working(phase: phase, line: line)
+            }
+        case .created(let system32, let sysWoW64):
+            bottle = .created(system32: system32, sysWoW64: sysWoW64)
+        case .failed(let reason, _):
+            bottle = .failed(reason)
         case .finished:
             break
         }

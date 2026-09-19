@@ -1,0 +1,245 @@
+import Foundation
+import Testing
+
+@testable import SakeKit
+
+private func temporaryRoot() -> Paths {
+    let root = FileManager.default.temporaryDirectory.appending(path: "sake-bottle-\(UUID().uuidString)")
+    return Paths(root: root.appending(path: "support"), cache: root.appending(path: "cache"))
+}
+
+private func remove(_ paths: Paths) {
+    try? FileManager.default.removeItem(at: paths.root.deletingLastPathComponent())
+}
+
+/// An engine whose `wine` and `wineserver` are shell scripts. They record how they were
+/// called and with what environment, and `wineboot` populates the prefix the way a real one
+/// does -- or, with the flags below, the way the two failures that matter do.
+private func makeFakeEngine(in paths: Paths, wow64: Bool = true, freeType: Bool = true) throws {
+    let bin = paths.engine.appending(path: "bin")
+    try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+
+    let wine = """
+        #!/bin/sh
+        here="$(dirname "$0")"
+        echo "$@" >> "$here/wine.args"
+        env | sort > "$here/wine.env"
+        if [ "$1" = wineboot ]; then
+            mkdir -p "$WINEPREFIX/drive_c/windows/system32" "$WINEPREFIX/drive_c/windows/syswow64"
+            : > "$WINEPREFIX/system.reg"
+            : > "$WINEPREFIX/drive_c/windows/system32/ntdll.dll"
+            : > "$WINEPREFIX/drive_c/windows/system32/kernel32.dll"
+            \(wow64 ? ": > \"$WINEPREFIX/drive_c/windows/syswow64/ntdll.dll\"" : "true")
+            \(freeType ? "true" : "echo '\(BottleBuilder.freeTypeMissing).' >&2")
+            echo "wineboot: the prefix is up"
+        fi
+        exit 0
+        """
+
+    let wineserver = """
+        #!/bin/sh
+        here="$(dirname "$0")"
+        echo "$@" >> "$here/wineserver.args"
+        printenv WINEPREFIX >> "$here/wineserver.prefixes"
+        exit 0
+        """
+
+    for (name, script) in [("wine", wine), ("wineserver", wineserver)] {
+        let url = bin.appending(path: name)
+        try script.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+}
+
+private func recorded(_ name: String, in paths: Paths) -> [String] {
+    let url = paths.engine.appending(path: "bin/\(name)")
+    let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+    return text.split(separator: "\n").map(String.init)
+}
+
+private func collect(_ stream: AsyncStream<BottleEvent>) async -> [BottleEvent] {
+    var events: [BottleEvent] = []
+    for await event in stream { events.append(event) }
+    return events
+}
+
+private func failure(in events: [BottleEvent]) -> (reason: String, log: URL?)? {
+    events.compactMap { event -> (String, URL?)? in
+        if case .failed(let reason, let log) = event { (reason, log) } else { nil }
+    }.first
+}
+
+private func phases(in events: [BottleEvent]) -> [BottlePhase] {
+    events.compactMap { event in
+        if case .phase(let phase) = event { phase } else { nil }
+    }
+}
+
+@Test func thePhasesRunInOrderAndTheBottleReportsWhatLanded() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    let builder = BottleBuilder(paths: paths)
+    let events = await collect(builder.create())
+
+    #expect(phases(in: events) == [.boot, .settle, .verify, .registry])
+    #expect(events.contains(.created(system32: 2, sysWoW64: 1)))
+    #expect(builder.bottle.exists)
+    #expect(builder.bottle.url.path == paths.bottles.appending(path: "default").path)
+}
+
+@Test func theCrashDialogIsTurnedOffBeforeAnythingCanCrash() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    _ = await collect(BottleBuilder(paths: paths).create())
+
+    // It has to be the first thing after the prefix exists, because a crash before it puts
+    // up winedbg's dialog and holds the process until somebody clicks Close.
+    let calls = recorded("wine.args", in: paths)
+    #expect(calls.first == "wineboot --init")
+    #expect(calls.last?.contains(#"reg add HKCU\Software\Wine\WineDbg"#) == true)
+    #expect(calls.last?.contains("ShowCrashDialog /t REG_DWORD /d 0 /f") == true)
+}
+
+@Test func everySettingAWineRunNeedsReachesTheProcess() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    _ = await collect(BottleBuilder(paths: paths).create())
+
+    let environment = recorded("wine.env", in: paths)
+    #expect(environment.contains("WINEPREFIX=\(paths.bottles.appending(path: "default").path)"))
+    // Without this wineboot waits forever on the Wine Mono installer's dialog.
+    #expect(environment.contains("WINEDLLOVERRIDES=mscoree,mshtml=d"))
+    // err+all turns a cleanly handled dlopen failure into a crash.
+    #expect(environment.contains("WINEDEBUG=-all"))
+    // CW Hack 22996, without which Battle.net never loads its login page.
+    #expect(environment.contains("WINE_SIMULATE_WRITECOPY=1"))
+}
+
+@Test func theRosettaBridgeIsNamedOnlyWhenItIsReallyThere() throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    let bottle = Bottle(paths: paths)
+
+    // A variable pointing at nothing would read as "D3DMetal is set up" everywhere
+    // downstream, and Diablo IV's silent deadlock is what that costs.
+    #expect(bottle.environment(inheriting: [:])["CX_APPLEGPTK_LIBD3DSHARED_PATH"] == nil)
+
+    try FileManager.default.createDirectory(
+        at: paths.d3dSharedLibrary.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try Data().write(to: paths.d3dSharedLibrary)
+
+    #expect(
+        bottle.environment(inheriting: [:])["CX_APPLEGPTK_LIBD3DSHARED_PATH"]
+            == paths.d3dSharedLibrary.path
+    )
+}
+
+@Test func aWineRunIsNeverTranslated() {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+
+    let command = Bottle(paths: paths).command("wine", ["wineboot"], inheriting: [:])
+
+    // `arch` is a hardened system binary, so exec'ing it strips every DYLD_* variable --
+    // and Wine's binaries are x86_64 already. Only the build is wrapped.
+    #expect(command.architecture == .native)
+    #expect(command.executable.path == paths.engine.appending(path: "bin/wine").path)
+}
+
+@Test func anEmptySysWoW64IsNotAWorkingBottle() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths, wow64: false)
+
+    let events = await collect(BottleBuilder(paths: paths).create())
+
+    #expect(failure(in: events)?.reason.contains("32-bit") == true)
+    #expect(phases(in: events).contains(.registry) == false)
+}
+
+@Test func aWineThatCannotLoadFreeTypeIsNotAWorkingBottle() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths, freeType: false)
+
+    let events = await collect(BottleBuilder(paths: paths).create())
+
+    // The one cheap sign that the @loader_path sonames do not resolve for a running Wine.
+    #expect(failure(in: events)?.reason.contains("FreeType") == true)
+}
+
+@Test func aRunThatFailedLeavesNoWineserverHoldingTheBottle() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths, wow64: false)
+
+    _ = await collect(BottleBuilder(paths: paths).create())
+
+    // `-w` waits, `-k` kills. Both have to have happened, and the kill has to have been
+    // pointed at this prefix rather than the default ~/.wine.
+    #expect(recorded("wineserver.args", in: paths) == ["-w", "-k"])
+    let prefixes = recorded("wineserver.prefixes", in: paths)
+    #expect(prefixes.allSatisfy { $0 == paths.bottles.appending(path: "default").path })
+}
+
+@Test func takingABottleDownNamesItsOwnPrefix() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    _ = try await Bottle(paths: paths).stop()
+
+    // Without WINEPREFIX, `wineserver -k` goes after ~/.wine, kills nothing and exits 0.
+    #expect(recorded("wineserver.args", in: paths) == ["-k"])
+    #expect(recorded("wineserver.prefixes", in: paths) == [paths.bottles.appending(path: "default").path])
+}
+
+@Test func aBottleThatExistsIsNotBootedAgain() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    let builder = BottleBuilder(paths: paths)
+    _ = await collect(builder.create())
+    try FileManager.default.removeItem(at: paths.engine.appending(path: "bin/wine.args"))
+
+    let second = await collect(builder.create())
+
+    #expect(second == [.alreadyCreated(system32: 2, sysWoW64: 1), .finished])
+    #expect(recorded("wine.args", in: paths).isEmpty)
+}
+
+@Test func missingWineIsNamedRatherThanRunInto() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+
+    let builder = BottleBuilder(paths: paths)
+    #expect(builder.missingPrerequisite?.contains("Build Wine first") == true)
+
+    let events = await collect(builder.create())
+    #expect(failure(in: events)?.reason.contains("Build Wine first") == true)
+    // Nothing ran, so there is no log to send anyone to.
+    #expect(failure(in: events)?.log == nil)
+}
+
+@Test func theWholeRunGoesToALogEvenThoughTheUISeesLines() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    let builder = BottleBuilder(paths: paths)
+    let events = await collect(builder.create())
+
+    let log = try String(contentsOf: builder.logURL, encoding: .utf8)
+    #expect(log.contains("=== boot"))
+    #expect(log.contains("=== verify system32 2 / syswow64 1 files"))
+    #expect(log.contains("=== verify Wine loaded FreeType from the engine"))
+    #expect(events.contains(.output("wineboot: the prefix is up")))
+}
