@@ -63,6 +63,14 @@ than below it:
   the target to 26 removes no `@available` checks — it only excludes Sequoia users, who are
   exactly the audience.
 
+What that style actually is, measured in sake on 2026-09-19 (macOS 27.0, SDK 26.5,
+deployment target 15.0): an `NSPanel` carrying the utility style mask, at window level 3,
+which cannot become the main window, cannot be minimised, and has `hidesOnDeactivate` set.
+The last of those decides where it may be used — a window whose job is to say "download this
+from Apple" must not vanish the moment the user switches to a browser. So the main window is
+a plain `Window`, and the utility style is for the auxiliary windows the setup flow will put
+on top of it.
+
 Raise it when a macOS 26-only API earns it; raising a deployment target later is cheap.
 
 **What sake must not do is refuse to install based on the OS version alone.** The real

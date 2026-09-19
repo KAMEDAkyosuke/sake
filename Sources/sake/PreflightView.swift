@@ -22,6 +22,8 @@ struct PreflightView: View {
                 }
             }
 
+            Spacer(minLength: 0)
+
             HStack(spacing: 8) {
                 if isChecking {
                     ProgressView().controlSize(.small)
@@ -34,7 +36,8 @@ struct PreflightView: View {
             }
         }
         .padding(24)
-        .frame(width: 560, alignment: .leading)
+        .frame(minWidth: 460, idealWidth: 560, maxWidth: .infinity,
+               minHeight: 260, maxHeight: .infinity, alignment: .topLeading)
         .task { await check() }
     }
 
