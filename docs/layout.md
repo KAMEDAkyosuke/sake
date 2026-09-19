@@ -11,10 +11,12 @@ those were measured in sake.
 ```
 /Applications/Sake.app                       the app, and nothing else
 ~/Library/Sake/
-    engine/                                  the Wine build and its libraries, ~1.2 GB
+    engine/                                  Wine, its libraries and D3DMetal, 1.1 GB
     bottles/                                 prefixes and the games in them, tens of GB
 ~/Library/Caches/Sake/
     dl/ sources/ toolchain/ build/           downloads and build intermediates, ~4 GB
+    d3dmetal/                                Apple's redist/lib, kept so that the image
+                                             need not stay mounted — see licensing.md
 ```
 
 Uninstalling is an explicit action in the app, not a side effect of dragging the bundle to

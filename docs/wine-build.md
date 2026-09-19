@@ -3,12 +3,12 @@
 What the build has to do, and which parts of it are not negotiable.
 
 Everything here was learned in the d4-mac prototype between 2026-08 and 2026-09-17, on one
-machine (Apple silicon, macOS 27.0), unless a section says otherwise. **sake built the nine
-components below and then Wine itself on 2026-09-19** — configure, the soname rewrite, make
-and install, 4m40s for Wine on ten cores, 1.1 GB of engine. What it has not done is run what
-it built: that needs a prefix, and creating one is the next piece. Treat anything not marked
-as sake's own measurement as the specification the implementation has to satisfy rather than
-a report on its behaviour.
+machine (Apple silicon, macOS 27.0), unless a section says otherwise. **sake produced the
+nine components below and then built Wine itself on 2026-09-19** — configure, the soname
+rewrite, make and install, 4m40s for Wine on ten cores, 1.1 GB of engine. What it has not
+done is run what it built: that needs a prefix, and creating one is the next piece. Treat
+anything not marked as sake's own measurement as the specification the implementation has to
+satisfy rather than a report on its behaviour.
 
 ## Why CrossOver's sources and not upstream Wine
 
@@ -125,7 +125,8 @@ wrapping used to buy.
 `CC` is not optional. With the triplet alone, gmp compiles x86_64 assembly and hands it to
 an arm64 assembler: `tmp-add_err1_n.s: error: invalid operand / pop %rbx`.
 
-Verified by building the seven libraries and then Wine itself this way on 2026-09-19. Wine's
+Verified by building the six libraries that take a configure flag, and then Wine itself, this
+way on 2026-09-19 — MoltenVK is placed rather than configured, so it never sees one. Wine's
 configure had never been run without the wrapping — the prototype passed it no triplet at all
 — and it wants `CXX` named as well as `CC`, CrossOver's tree having C++ in it.
 
