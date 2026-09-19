@@ -76,12 +76,14 @@ public struct Bottle: Sendable, Equatable {
     public func command(
         _ program: String,
         _ arguments: [String] = [],
+        workingDirectory: URL? = nil,
         inheriting base: [String: String] = ProcessInfo.processInfo.environment
     ) -> Command {
         Command(
             executable: engine.appending(path: "bin/\(program)"),
             arguments: arguments,
             environment: environment(inheriting: base),
+            workingDirectory: workingDirectory,
             architecture: .native
         )
     }

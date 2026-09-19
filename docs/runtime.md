@@ -2,9 +2,9 @@
 
 A built Wine is not a working one. This is what the d4-mac prototype needed on top of the
 build to get Diablo IV from "starts" to "plays", verified 2026-09-17 and 2026-09-18 on one
-machine. **sake has now started Wine, but not a game.** It creates prefixes, dated in the
-next section, and it builds the file layout D3DMetal needs; everything past that is still
-the prototype's.
+machine. **sake now creates prefixes and starts the Battle.net client in one**, dated in
+the sections below, and it builds the file layout D3DMetal needs. No game has been started,
+so everything from the Play button onwards is still the prototype's.
 
 ## Creating a prefix
 
@@ -25,6 +25,11 @@ the prefix looks finished when this is what happened.
 dialog and holds the process until somebody clicks Close — an unattended command just blocks
 until it times out — and resets `WINEDEBUG` on the way, so suppressed logging comes roaring
 back into whatever was being debugged. (Prototype, 2026-09-18.)
+
+Both halves of that showed up in sake on 2026-09-19. With the value set, a run whose render
+process kept hitting a breakpoint carried on unattended instead of stopping on a dialog —
+and `winedbg --auto` still ran and symbolised, spilling 880 lines of `dbghelp_dwarf` fixmes
+into a run made with `WINEDEBUG=-all`.
 
 sake created its first bottle on 2026-09-19 (Apple M5, macOS 27.0, against the engine built
 the same day). What that cost and what came out:
@@ -58,6 +63,19 @@ Without it, every CEF render process executes an `int3` within five seconds of s
 always at the same address; `UAuth: begin loading` never appears and the login page is never
 even requested. CodeWeavers told Battle.net users to set this by hand in 2023 and it is
 still not automatic.
+
+sake measured that on 2026-09-19 by starting the client twice with nothing different but
+this variable:
+
+| | with it | without it |
+|---|---|---|
+| `wine: Unhandled exception 0x80000003` | none in 75 s | 11 in 60 s, every one at `6B0300E1` |
+| `UAuth: begin loading` | present, then `finished loading. statusCode=200 state=Login` | never appears |
+| `Battle.net.exe` processes | 4 | 3 |
+
+`0x80000003` is `STATUS_BREAKPOINT`, which is the `int3`, and the first arrives nine seconds
+in and then one every five seconds after it. Same bottle, same arguments, same other three
+variables: this one line is the difference between a login page and a breakpoint.
 
 ### `--in-process-gpu` — or the login form is drawn but never shown
 
@@ -104,6 +122,45 @@ sake does this on 2026-09-19: it copies `libd3dshared.dylib` into
 `lib/wine/x86_64-unix/D3DMetal.framework/D3DMetal` resolves. The engine that comes out has
 `d3d12.so` linking `@rpath/libd3dshared.dylib` and that symlink landing on a real x86_64
 Mach-O. **Nothing has been run against it.**
+
+## Starting a title
+
+From the game's own directory, by its bare leaf name, with the title's arguments. sake did
+this for the first time on 2026-09-19; a healthy Battle.net run looks like this in
+`ps -Ao pid=,args=`:
+
+```
+start.exe /exec Battle.net.exe --use-gl=angle --use-angle=vulkan
+<engine>/lib/wine/../../bin/wineserver
+C:\windows\system32\{services,winedevice,plugplay,svchost,explorer,rpcss,conhost}.exe
+C:\Program Files (x86)\Battle.net\Battle.net.exe --use-gl=angle --use-angle=vulkan --in-process-gpu
+C:\Program Files (x86)\Battle.net\Battle.net.exe --type=utility --utility-sub-type=storage…
+C:\Program Files (x86)\Battle.net\Battle.net.exe --type=utility --utility-sub-type=network…
+C:\Program Files (x86)\Battle.net\Battle.net.exe --type=renderer …
+C:/ProgramData/Battle.net/Agent/Agent.9775/Agent.exe --session=…
+```
+
+Three things in that list defeat a naive process check:
+
+- **`wine` turns a relative name into `start.exe /exec`.** sake's own launch therefore
+  appears as `start.exe`, never as the game. That is precisely the case the "cut `argv[0]`
+  at its first `.exe`" rule exists for, and it drops out as intended.
+- **wineserver does not spell itself `<engine>/bin/wineserver`.** `ps` shows
+  `<engine>/lib/wine/../../bin/wineserver`. A teardown check matching the tidy path matches
+  nothing and so reports success every time — sake's first version did exactly that, and
+  only a real run showed it.
+- **`--in-process-gpu` does not mean one process.** It folds the GPU into the browser
+  process; the renderer and the two utility processes remain their own. Four
+  `Battle.net.exe` is what a healthy run has.
+
+What the client's own logs said on that run is the evidence the settings above did their
+job: `libcef-*.log` held two `WSALookupServiceBegin failed` lines and nothing else — no GPU
+errors, no "GL is disabled" — and `battle.net-*.log` ended
+`UAuth: finished loading. statusCode=200 state=Login`.
+
+**Nobody looked at the screen.** This was measured without screen access, so "the login form
+is visible" is not claimed. What is claimed is that the page was requested, came back 200,
+and the renderer that draws it was still alive seventy-five seconds later.
 
 ## Two patches to Wine's own code
 

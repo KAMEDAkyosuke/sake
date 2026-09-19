@@ -29,6 +29,12 @@ struct SetupView: View {
     @State private var importBlockedBy: String?
     @State private var importRun: Task<Void, Never>?
     @State private var importGeneration = 0
+    @State private var titles: [Title] = []
+    @State private var runningTitle: Title?
+    @State private var titleStatus: TitleStatus?
+    @State private var titleBlockedBy: String?
+    @State private var titleRun: Task<Void, Never>?
+    @State private var titleGeneration = 0
 
     var body: some View {
         ScrollView {
@@ -100,6 +106,17 @@ struct SetupView: View {
                     start: startImport,
                     stop: stopImport
                 )
+
+                Divider()
+
+                TitleView(
+                    titles: titles,
+                    running: runningTitle,
+                    status: titleStatus,
+                    blockedBy: titleBlockedBy,
+                    start: startTitle,
+                    stop: stopTitle
+                )
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -167,6 +184,11 @@ struct SetupView: View {
             importCandidates = []
             importBlockedBy = "No CrossOver bottle to import from."
         }
+
+        titles = Title.installed(in: bottles.bottle)
+        titleBlockedBy = titles.isEmpty
+            ? "Nothing that can be started is in this bottle yet."
+            : TitleLauncher(paths: paths, title: titles[0]).missingPrerequisite
     }
 
     private func startFetching() {
@@ -421,6 +443,54 @@ struct SetupView: View {
             if case .failed = importStatus {} else if cloned > 0 {
                 importStatus = .imported(count: cloned, bytes: bytes)
             }
+        }
+    }
+
+    private func startTitle(_ title: Title) {
+        guard titleRun == nil else { return }
+        titleGeneration += 1
+        let generation = titleGeneration
+        runningTitle = title
+        titleStatus = .starting
+        titleRun = Task {
+            for await event in TitleLauncher(title: title).launch() {
+                apply(event)
+            }
+            if generation == titleGeneration {
+                titleRun = nil
+                runningTitle = nil
+                survey()
+            }
+        }
+    }
+
+    /// Cancelling reaches `wine` and nothing else, so the bottle is taken down explicitly
+    /// and then looked at again rather than assumed down. See docs/runtime.md.
+    private func stopTitle() {
+        guard let title = runningTitle else { return }
+        titleGeneration += 1
+        titleRun?.cancel()
+        titleRun = nil
+        Task {
+            let left = await TitleLauncher(title: title).stop()
+            titleStatus = .stopped(left: left.count)
+            runningTitle = nil
+            survey()
+        }
+    }
+
+    private func apply(_ event: LaunchEvent) {
+        switch event {
+        case .started:
+            titleStatus = .starting
+        case .output(let line):
+            titleStatus = .running(line: line)
+        case .exited(let status):
+            titleStatus = .exited(status: status)
+        case .failed(let reason, _):
+            titleStatus = .failed(reason)
+        case .finished:
+            break
         }
     }
 }

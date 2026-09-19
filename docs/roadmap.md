@@ -60,8 +60,13 @@ put one up. `runtime.md` has what that measured.
 **Importing is done too, the same day.** A game already installed under CrossOver is cloned
 in rather than copied, which costs no disk at all, and what comes across is decided by
 difference against a fresh prefix — so no title is named in the code. `layout.md` has the
-measurement and `licensing.md` the line it stays inside. Still to come: the two patches, and
-what a title profile actually contains.
+measurement and `licensing.md` the line it stays inside.
+
+**Starting a title is done, also 2026-09-19**, and with it the first end-to-end evidence
+that any of this works: the Battle.net client comes up in sake's own bottle and loads its
+login page. What a title is — executable, arguments, how to recognise its process — is a
+value, not code. Still to come: the two patches, and what else a title profile has to
+carry once a second one exists.
 
 ### Phase 4 — the GUI proper
 
