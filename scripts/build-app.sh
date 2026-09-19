@@ -61,6 +61,12 @@ mkdir -p "${APP_DIR}/Contents/Resources"
 
 cp "${BUILD_DIR}/sake" "${APP_DIR}/Contents/MacOS/"
 
+# Wine cannot be built without these, so an app without them is an app that gets as far as
+# the Play button and stops. They are copied rather than carried as a SwiftPM resource
+# because they are LGPL-2.1-or-later and not MIT, which a directory named patches/ at the
+# top of the repository says and Sources/SakeKit/Resources would hide.
+cp -R "${PROJECT_ROOT}/patches" "${APP_DIR}/Contents/Resources/"
+
 sed "s/VERSION_PLACEHOLDER/${VERSION}/g" "${PROJECT_ROOT}/Info.plist.template" > "${APP_DIR}/Contents/Info.plist"
 
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"

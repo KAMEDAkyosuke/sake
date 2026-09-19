@@ -65,8 +65,15 @@ measurement and `licensing.md` the line it stays inside.
 **Starting a title is done, also 2026-09-19**, and with it the first end-to-end evidence
 that any of this works: the Battle.net client comes up in sake's own bottle and loads its
 login page. What a title is — executable, arguments, how to recognise its process — is a
-value, not code. Still to come: the two patches, and what else a title profile has to
-carry once a second one exists.
+value, not code.
+
+**The two patches landed the same day, and with them a game runs.** Diablo IV starts behind
+a live parent process and reaches 92 threads, 1982 MB and 103 Metal/AGX mappings, where the
+unpatched build stalls flat at 12. `runtime.md` has both measurements and what they are
+against; `licensing.md` has why `patches/` is not MIT. What is still unpressed is the Play
+button itself — the probe reproduces the check that button trips over, not the button.
+
+Still to come here: what else a title profile has to carry once a second one exists.
 
 ### Phase 4 — the GUI proper (under way)
 
@@ -118,6 +125,11 @@ easier to read than it was interleaved with `configure` flags.
   gnutls only when something asks for TLS, and nothing has yet. See `layout.md`. (This used
   to be the whole question of whether Wine could load any of them, and path length before
   that. Both went away.)
+- **A built engine does not pick up a patch, or D3DMetal.** `bin/wine` existing is what says
+  the Wine step is done, so changing a patch needs that deleted. Worse, deleting it and
+  rebuilding silently replaces Apple's four DX12 DLLs with Wine's while the D3DMetal step
+  still reads "already installed" — measured 2026-09-19, see `wine-build.md`. Both are the
+  same missing thing: nothing in sake knows what a rebuild invalidates.
 - **How much to generalise beyond one title.** The prototype hard-coded Diablo IV in several
   places (launch arguments, process identification, which directories to import). One of
   those went away on 2026-09-19 — which directories to import is a difference, not a list —

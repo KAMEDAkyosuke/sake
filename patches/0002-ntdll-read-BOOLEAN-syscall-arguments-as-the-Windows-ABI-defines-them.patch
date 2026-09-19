@@ -1,0 +1,82 @@
+ntdll: read BOOLEAN syscall arguments as the Windows ABI defines them.
+
+A Windows-side caller guarantees only the low byte of a BOOLEAN argument. The x64 ABI
+leaves the upper bits of any narrow integer argument undefined, and MSVC stores exactly
+one byte for a BOOLEAN it passes on the stack, so the other seven bytes of that slot are
+whatever the caller's stack held before. __wine_syscall_dispatcher copies the raw 64-bit
+word into the SysV argument register and calls the C implementation with it.
+
+That implementation is built with clang on macOS, and clang assumes -- as the SysV ABI
+allows it to -- that narrow parameters arrive zero-extended to 32 bits, so it tests all
+32 bits: NtQueryDirectoryObject compiles `restart ? 0 : *context` to `testl %r8d,%r8d`.
+Garbage in bits 8-31 therefore reads as TRUE. Wine on Linux never sees this, because the
+unix side there is built with GCC, whose callees read only the byte.
+
+Measured on Diablo IV 3.1.0 (the 2026-06-30 patch), which inspects the process that
+started it when that process is still alive -- the Battle.net Agent always is. The loader
+opens its parent, reads its image path, and walks \DosDevices one entry at a time with
+NtQueryDirectoryObject to map drive letters to devices. WINEDEBUG=+syscall shows what it
+passed for the fifth argument, `restart`:
+
+    this tree:    NtQueryDirectoryObject(00000168,0010cf00,00000400,00000001,6c006200610000,...)
+    CrossOver:    NtQueryDirectoryObject(0000016c,0010cf00,00000400,00000001,00000000,...)
+
+The low byte is 0 in both. Ours carries the UTF-16 text "abl" above it, left on the stack
+by an earlier string operation; with it the walk restarted at entry 0 on every call,
+1.13 million times in thirty seconds, and the game sat at 12 threads forever. Skipping the
+check by starting the game with no parent, or killing the parent afterwards, does not
+change this loop, which matches everything observed before the cause was known.
+
+CrossOver 26.3 clears the same check against the same bottle only because its PE side is
+built with GCC and binutils, which leaves zeros in that stack slot where clang/lld-built
+code leaves a string. Its ntdll.so contains the identical `testl %r8d,%r8d`, so it carries
+the same latent bug; disassembly of both is in the README.
+
+Only NtQueryDirectoryObject is changed, because it is the one call measured. The helper is
+in unix_private.h so that the other syscalls with stack-passed BOOLEAN arguments --
+NtQueryDirectoryFile, NtQueryEaFile, NtSetTimer, NtLockFile, NtNotifyChangeDirectoryFile,
+NtNotifyChangeKey, NtCreateEvent among them -- can be given the same one-line treatment
+once a caller is seen to need it.
+
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -425,6 +425,19 @@
+     while (len--) *dst++ = (unsigned char)*src++;
+ }
+ 
++/* Read a BOOLEAN syscall argument the way the Windows ABI defines it: only the low byte is
++ * meaningful. Windows-side callers guarantee nothing about the upper bits of a narrow
++ * argument, and MSVC stores exactly one byte for a stack-passed BOOLEAN, so the rest of the
++ * slot is whatever the stack held before. The syscall dispatcher hands that raw 64-bit word
++ * to this side unchanged, where clang assumes that narrow parameters arrive zero-extended to
++ * 32 bits -- a SysV convention Windows code does not follow -- and tests all 32 of them. The
++ * asm barrier makes the compiler drop that assumption and read the byte only. */
++static inline BOOLEAN boolean_arg( BOOLEAN value )
++{
++    __asm__( "" : "+r" (value) );
++    return value;
++}
++
+ static inline void *get_signal_stack(void)
+ {
+     return (void *)(((ULONG_PTR)NtCurrentTeb() & ~signal_stack_mask) + teb_size);
+--- a/dlls/ntdll/unix/sync.c
++++ b/dlls/ntdll/unix/sync.c
+@@ -2081,9 +2081,16 @@
+                                         ULONG *context, ULONG *ret_size )
+ {
+     unsigned int status, i, count, total_len, pos, used_size, used_count, strpool_head;
+-    ULONG index = restart ? 0 : *context;
+     struct directory_entry *entries;
++    ULONG index;
+ 
++    /* Diablo IV's loader walks \DosDevices with this call, single entry at a time, and
++     * passes restart=FALSE in a stack slot whose upper bytes still hold an old string. Read
++     * only the byte, or the walk restarts at entry 0 on every call and never ends. */
++    single_entry = boolean_arg( single_entry );
++    restart = boolean_arg( restart );
++    index = restart ? 0 : *context;
++
+     if (!(entries = malloc( size ))) return STATUS_NO_MEMORY;
+ 
+     SERVER_START_REQ( get_directory_entries )

@@ -3,7 +3,7 @@
 Run Windows games on an Apple silicon Mac, by building CrossOver's Wine from CodeWeavers'
 published LGPL sources — with a GUI, so it does not take a terminal.
 
-## Status: the Battle.net client runs. No game does.
+## Status: a game starts. Nobody has played one yet.
 
 What the app does today is answer whether this Mac can do the rest — Apple silicon,
 Rosetta 2, the Command Line Tools, Apple's Game Porting Toolkit, room on disk — then
@@ -12,10 +12,14 @@ and libraries Wine is configured against, build CrossOver's Wine itself, guide A
 D3DMetal in from an image you mounted, make a bottle with the result, clone a game you
 already installed under CrossOver into it, and start it.
 
-"Start it" means the Battle.net client: it comes up, reaches Blizzard, and loads its login
-page. Pressing Play there does not yet work — that needs a patch to Wine's own ntdll which
-this tree does not carry. So no game runs, and if you were looking for something that plays
-today, this is not it.
+The Battle.net client comes up, reaches Blizzard and loads its login page. Diablo IV starts
+as well: launched behind a live parent process — the shape the client's Agent creates, and
+the one that used to stall forever — it reaches 92 threads and 103 Metal/AGX mappings, which
+is what the two patches in `patches/` are for.
+
+What nobody has done is press Play in the client and play. The evidence here is process
+state rather than a screen, and the client only hands out a login token after that press. If
+you were looking for something you can play today, this is not it yet.
 
 There are two windows: a library for what is installed and what can be started, and a setup
 wizard that walks the six steps above one at a time. The wizard opens itself when setup is
@@ -25,8 +29,9 @@ What is here:
 
 | | |
 |---|---|
-| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the D3DMetal step, the bottle, the import and starting a title |
+| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the patch step, the D3DMetal step, the bottle, the import and starting a title |
 | `Sources/sake/` | the SwiftUI app — two windows, kept thin |
+| `patches/` | the two changes sake makes to Wine's own code — LGPL-2.1-or-later, not MIT |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
 | `scripts/build-app.sh` | builds `target/Sake.app` |
 | `scripts/test.sh` | runs the tests |
@@ -92,5 +97,5 @@ Nothing is installed into `/usr/local`, `/opt/local` or `/nix`.
 
 ## Licence
 
-MIT, except `patches/` (when it exists): patches against Wine's own source are derivatives
-of LGPL code and are LGPL-2.1-or-later. See `docs/licensing.md`.
+MIT, except `patches/`: patches against Wine's own source are derivatives of LGPL code and
+are LGPL-2.1-or-later. See `docs/licensing.md`.

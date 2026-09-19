@@ -56,6 +56,27 @@ Notes that cost time to find:
 - The prototype ran newer gnutls, MoltenVK, SDL2 and D3DMetal than CrossOver ships, and that
   was deliberate, not drift.
 
+## Two patches go in before configure
+
+`patches/` holds the changes sake makes to Wine's own code — two of them, both in ntdll,
+both LGPL-2.1-or-later rather than this repository's MIT. What each one is for, and how to
+tell that it worked, is in `runtime.md`; why they are a separate directory is in
+`licensing.md`.
+
+They are applied to the unpacked source tree, which is the only copy sake has of it, so the
+build has one step that is not out of tree. Whether a patch is already in is asked of
+`patch` itself — a patch that reverses cleanly is applied — rather than recorded in a marker
+file, because the tarball is unpacked once and never re-extracted and a marker would have to
+be invalidated by hand every time a patch changed.
+
+**A build with no patches is stopped rather than allowed.** Wine without them configures,
+compiles, installs and passes every check in this document. What it cannot do is start a
+game, and that is a long way downstream of here.
+
+An engine that is already built does not pick a new patch up: `make install` is what writes
+`bin/wine`, and its presence is what says the step is done. Changing a patch means deleting
+that and rebuilding.
+
 ## configure flags that must not be removed
 
 - **`--enable-archs=i386,x86_64`.** Battle.net's launcher is 32-bit, so 32-bit support is not
@@ -88,12 +109,21 @@ clang is *not* required; the Mach-O side builds with stock Apple clang.
 - **Never wrap a Wine *run* in `arch -x86_64`.** `arch` is a hardened system binary, so
   exec'ing it strips every `DYLD_*` variable. Wine's binaries are already x86_64, so Rosetta
   handles them anyway.
-- **`make install` overwrites D3DMetal.** It puts Wine's own `d3d11`/`d3d12`/`dxgi.dll` back,
-  so installing D3DMetal has to happen *after* every `make install`, not once. sake keeps its
-  own copy of Apple's `redist/lib`, so putting it back is one press and does not need the
-  toolkit mounted again — but **nothing in the code calls it**. A rebuild button would have
-  to, and there is no rebuild button yet: deleting the engine is the only way to re-run
-  `make install` today, and that takes D3DMetal with it.
+- **`make install` overwrites D3DMetal.** It puts Wine's own `d3d10`/`d3d11`/`d3d12`/`dxgi.dll`
+  back, so installing D3DMetal has to happen *after* every `make install`, not once. sake keeps
+  its own copy of Apple's `redist/lib`, so putting it back is one press and does not need the
+  toolkit mounted again — but **nothing in the code calls it**.
+
+  This section used to say that deleting the whole engine was the only way to re-run `make
+  install`, so D3DMetal went with it and the next install put it back. That is wrong.
+  Measured in sake on 2026-09-19: deleting `engine/bin/wine` alone is enough to make the
+  wizard rebuild, and afterwards all four DLLs were Wine's — while the D3DMetal step still
+  read **"already installed"**, because `isInstalled` checks for the framework and the
+  framework is what `make install` does not touch. So the failure is silent, and the engine
+  it leaves cannot run a DX12 game. Re-installing by hand fixed it, and both patches were
+  measured on an engine put back that way. **`D3DMetalInstaller.appleOwnedDLLs` and
+  `appleMarker` already name exactly what to check for; `isInstalled` just does not use
+  them.**
 - **Sonames must not be leaf names.** A leaf name resolves only through
   `DYLD_LIBRARY_PATH`, and that does not reach Wine's child processes. sake rewrites the
   four in `include/config.h` to `@loader_path`-relative paths between configure and make;

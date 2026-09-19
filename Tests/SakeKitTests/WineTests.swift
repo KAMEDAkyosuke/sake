@@ -12,6 +12,17 @@ private func remove(_ paths: Paths) {
     try? FileManager.default.removeItem(at: paths.root.deletingLastPathComponent())
 }
 
+/// The real patches ship in the app bundle, and the tests are not an app, so the fake tree
+/// gets a fake patch: what is being tested here is that the build applies what it is given
+/// and stops when it cannot. ``PatchTests`` is where the real two are checked.
+private func fakePatches(in paths: Paths) -> URL {
+    paths.root.deletingLastPathComponent().appending(path: "patches")
+}
+
+private func builder(in paths: Paths) -> WineBuilder {
+    WineBuilder(paths: paths, patcher: WinePatcher(directory: fakePatches(in: paths)))
+}
+
 private func configHeader(undefining: Set<String> = []) -> String {
     var lines = ["/* confdefs.h */", "#define PACKAGE_NAME \"Wine\""]
     for recipe in BuildRecipe.all {
@@ -49,6 +60,25 @@ private func makeFakeTree(
     let source = Component.crossover.unpackedURL(in: paths)
     try manager.createDirectory(at: source, withIntermediateDirectories: true)
     try "Wine version 11.0\n".write(to: source.appending(path: "VERSION"), atomically: true, encoding: .utf8)
+
+    let patched = source.appending(path: "dlls/ntdll/unix/loader.c")
+    try manager.createDirectory(at: patched.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try "one\ntwo\nthree\n".write(to: patched, atomically: true, encoding: .utf8)
+
+    let patches = fakePatches(in: paths)
+    try manager.createDirectory(at: patches, withIntermediateDirectories: true)
+    try """
+        Fake patch, so that the build has something to apply.
+
+        --- a/dlls/ntdll/unix/loader.c
+        +++ b/dlls/ntdll/unix/loader.c
+        @@ -1,3 +1,4 @@
+         one
+         two
+        +patched
+         three
+
+        """.write(to: patches.appending(path: "0001-fake.patch"), atomically: true, encoding: .utf8)
 
     // A real winemac.so has to be something `nm` can read, or the glue check cannot tell a
     // tree with D3DMetal from one without.
@@ -144,7 +174,7 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     let paths = temporaryRoot()
     defer { remove(paths) }
 
-    let builder = WineBuilder(paths: paths)
+    let builder = builder(in: paths)
     #expect(builder.missingPrerequisite?.contains("bison") == true)
 
     let events = await collect(builder.build())
@@ -158,13 +188,13 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     defer { remove(paths) }
     try makeFakeTree(in: paths)
 
-    let builder = WineBuilder(paths: paths)
+    let builder = builder(in: paths)
     let events = await collect(builder.build())
 
     let phases = events.compactMap { event -> WinePhase? in
         if case .phase(let phase) = event { phase } else { nil }
     }
-    #expect(phases == [.configure, .sonames, .make, .install, .verify])
+    #expect(phases == [.patch, .configure, .sonames, .make, .install, .verify])
     #expect(events.contains(.installed(version: "Wine version 11.0")))
     #expect(builder.isBuilt)
 }
@@ -174,7 +204,7 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     defer { remove(paths) }
     try makeFakeTree(in: paths)
 
-    _ = await collect(WineBuilder(paths: paths).build())
+    _ = await collect(builder(in: paths).build())
 
     let source = Component.crossover.unpackedURL(in: paths)
     #expect(!FileManager.default.fileExists(atPath: source.appending(path: "Makefile").path))
@@ -186,7 +216,7 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     defer { remove(paths) }
     try makeFakeTree(in: paths)
 
-    _ = await collect(WineBuilder(paths: paths).build())
+    _ = await collect(builder(in: paths).build())
 
     let path = try String(contentsOf: paths.wineBuild.appending(path: "configure.path"), encoding: .utf8)
     let toolchain = Component.llvmMinGW.unpackedURL(in: paths).appending(path: "bin").path
@@ -198,7 +228,7 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     defer { remove(paths) }
     try makeFakeTree(in: paths)
 
-    _ = await collect(WineBuilder(paths: paths).build())
+    _ = await collect(builder(in: paths).build())
 
     let header = try String(
         contentsOf: paths.wineBuild.appending(path: "include/config.h"), encoding: .utf8
@@ -217,7 +247,7 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     defer { remove(paths) }
     try makeFakeTree(in: paths, undefining: ["SONAME_LIBSDL2"])
 
-    let builder = WineBuilder(paths: paths)
+    let builder = builder(in: paths)
     let events = await collect(builder.build())
 
     // Carrying on here is what "no game controller works, silently" looks like.
@@ -231,10 +261,10 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     defer { remove(paths) }
     try makeFakeTree(in: paths, glue: false)
 
-    let events = await collect(WineBuilder(paths: paths).build())
+    let events = await collect(builder(in: paths).build())
 
     #expect(failure(in: events)?.reason.contains("D3DMetal") == true)
-    #expect(failure(in: events)?.log == WineBuilder(paths: paths).logURL)
+    #expect(failure(in: events)?.log == builder(in: paths).logURL)
 }
 
 @Test func theWholeWineBuildGoesToALogEvenThoughTheUISeesLines() async throws {
@@ -242,7 +272,7 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     defer { remove(paths) }
     try makeFakeTree(in: paths)
 
-    let builder = WineBuilder(paths: paths)
+    let builder = builder(in: paths)
     let events = await collect(builder.build())
 
     let log = try String(contentsOf: builder.logURL, encoding: .utf8)
@@ -258,9 +288,40 @@ private func failure(in events: [WineEvent]) -> (reason: String, log: URL?)? {
     defer { remove(paths) }
     try makeFakeTree(in: paths)
 
-    let builder = WineBuilder(paths: paths)
+    let builder = builder(in: paths)
     _ = await collect(builder.build())
     let second = await collect(builder.build())
 
     #expect(second == [.alreadyBuilt, .finished])
+}
+
+@Test func wineIsPatchedBeforeItIsConfigured() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeTree(in: paths)
+
+    let builder = builder(in: paths)
+    _ = await collect(builder.build())
+
+    let source = Component.crossover.unpackedURL(in: paths)
+    let patched = try String(
+        contentsOf: source.appending(path: "dlls/ntdll/unix/loader.c"), encoding: .utf8
+    )
+    #expect(patched == "one\ntwo\npatched\nthree\n")
+    #expect(try String(contentsOf: builder.logURL, encoding: .utf8).contains("applied: 0001-fake.patch"))
+}
+
+@Test func aBuildWithNoPatchesStopsBeforeConfigure() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeTree(in: paths)
+
+    // A Wine built without them installs, passes every check here, and only fails at the
+    // Play button, which is much too late to find out. See docs/runtime.md.
+    let builder = WineBuilder(paths: paths, patcher: WinePatcher(directory: nil))
+    let events = await collect(builder.build())
+
+    #expect(failure(in: events) != nil)
+    #expect(!FileManager.default.fileExists(atPath: paths.wineBuild.appending(path: "Makefile").path))
+    #expect(!builder.isBuilt)
 }

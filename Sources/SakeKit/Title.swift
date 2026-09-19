@@ -41,8 +41,9 @@ public struct Title: Sendable, Equatable, Codable, Identifiable {
 
     /// Diablo IV is deliberately not here. Started on its own it comes all the way up and
     /// then fails on "Aurora has rejected the token": the client only hands a token out
-    /// after Play has been pressed in the same session, and the Play button needs the
-    /// BOOLEAN patch this tree does not carry yet. See docs/runtime.md.
+    /// after Play has been pressed in the same session, so a row here would be a Play
+    /// button that leads to an error. Pressing Play inside the client is what starts it,
+    /// and that is the Agent's job rather than sake's. See docs/runtime.md.
     public static let known = [
         Title(
             id: "battle-net",

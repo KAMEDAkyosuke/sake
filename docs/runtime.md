@@ -164,12 +164,32 @@ and the renderer that draws it was still alive seventy-five seconds later.
 
 ## Two patches to Wine's own code
 
-The prototype carried two patches. Both are LGPL, being derivatives of Wine.
+sake carries two patches, in `patches/`, both LGPL-2.1-or-later because both are derivatives
+of Wine. They came from the prototype unchanged and go in before configure; the build side of
+that is in `wine-build.md` and the licence side in `licensing.md`.
+
+**sake measured both on 2026-09-19**, against its own engine and bottle, the day it started
+carrying them. The prototype's numbers are kept beside sake's because they are the
+before-the-patch half, and sake has not reproduced that half — its engine has never been
+built without them.
 
 **Resolve `libd3dshared` from `dll_dir` when the variable is unset.** A process whose
-environment was composed by an application never inherits the variable. Measured with the
-variable removed: before the patch 122 MB at 0.0% CPU with nine threads (deadlocked), after
-it 2561 MB at 38.6% CPU with 84 threads (running). The variable still wins when set.
+environment was composed by an application never inherits the variable. The prototype
+measured, with the variable removed: before the patch 122 MB at 0.0% CPU with nine threads
+(deadlocked), after it 2561 MB at 38.6% CPU with 84 threads (running). The variable still
+wins when set.
+
+sake's own measurement looks at what is mapped rather than at CPU. With the variable removed
+from the environment, Diablo IV came up at 83 threads and 2534 MB with
+`<engine>/lib/external/libd3dshared.dylib` mapped into it, seven regions. An unpatched ntdll
+returns before that `dlopen` when the variable is unset, so the library being in the process
+at all is the patch and nothing else.
+
+**`vmmap` is how to check this, not `WINEDEBUG=+module`.** The two `TRACE`s in
+`init_non_native_support` only run once something calls `pe_module_loaded`, which a
+`wine cmd /c exit` never does — and during a real game start they did not reach a filter on
+wine's own stderr either. Two attempts went that way before the mapping was looked at
+instead, which took one command.
 
 **Read `BOOLEAN` syscall arguments as the Windows ABI defines them.** This is the one that
 made the Play button work, and it is worth understanding before touching ntdll.
@@ -211,6 +231,16 @@ Two things this is *not*:
 - **Not Valve's Proton Hotfix.** ValveSoftware/Proton #9926 is a different failure on Linux
   (an exit on a breakpoint before any renderer init). A GCC-built unix side cannot hit this
   bug.
+
+sake measured this one with the prototype's probe shape — `start.exe /exec` keeps a Windows
+parent alive exactly as `Agent.exe` does, which reproduces the check in half a minute with
+no client and no mouse. Against sake's own engine and bottle: peak 92 threads, 1982 MB, 103
+Metal/AGX mappings, still alive when the sampling ended. The stall this replaces sits flat
+at 12-13 threads and 235-245 MB for as long as anyone cares to watch, so there is no reading
+of those numbers that confuses the two.
+
+**That is the check cleared, not the button pressed.** Nobody has pressed Play on sake's
+build; what has been shown is that the thing the button trips over no longer stalls.
 
 ## SSO: pressing Play does two separable things
 

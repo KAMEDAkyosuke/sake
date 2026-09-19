@@ -1,0 +1,74 @@
+ntdll: fall back to the installed libd3dshared.dylib when the variable is unset.
+
+Wine only registers a non-native (dynamically generated x86_64) code region with
+Rosetta if CX_APPLEGPTK_LIBD3DSHARED_PATH points at Apple's libd3dshared.dylib.
+CrossOver's launcher sets that on every run; nothing else does, and a process whose
+environment was composed by an application never inherits it. Battle.net's Agent.exe
+builds its own environment block for the game it launches, so starting Diablo IV from
+the client's Play button gives a game with no registration: diablo_iv_loader.dll
+generates code at runtime, drives it with fibers plus SetThreadContext, and without the
+registration the fiber switch does not return where it expects, its scheduler loop
+re-enters, and it deadlocks re-acquiring its own non-recursive SRW lock. The symptom is
+a process at 0.0% CPU with 122 MB resident and nine threads, no window, and not one byte
+in the game's own _FenrisDebug-*.txt.
+
+Resolving the library relative to dll_dir removes the dependency on the environment, so
+the Play button works. The variable still wins when set, which keeps CrossOver's
+behaviour as an override. dll_dir is <prefix>/lib/wine and is NULL only in a build tree,
+where there is no installed library to fall back to, so behaviour there is unchanged --
+as it is when the file is absent, since dlopen then fails exactly as it does today.
+
+The two TRACEs now name the path they used. Whether the variable arrived or the fallback
+ran is precisely the question this patch exists to answer, and WINEDEBUG=+module is how
+it gets answered.
+
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -1321,13 +1321,30 @@
+ static void init_non_native_support(void)
+ {
+     char *libd3dshared_path = getenv( "CX_APPLEGPTK_LIBD3DSHARED_PATH" );
++    char *default_path = NULL;
+ 
+     register_non_native_code_region = NULL;
+     supports_non_native_code_regions = NULL;
+ 
+-    if (!libd3dshared_path || !sonoma_or_later())
++    if (!sonoma_or_later())
+         return;
+ 
++    /* Fall back to the libd3dshared.dylib installed beside D3DMetal.framework, so that
++     * the registration below stops depending on a variable reaching this process.
++     * CrossOver's launcher exports CX_APPLEGPTK_LIBD3DSHARED_PATH on every run, but a
++     * process whose environment an application composed never receives it: Battle.net's
++     * Agent.exe builds its own block for the game it launches, so Diablo IV starts
++     * without the variable, no code region is ever registered, and its protected loader
++     * self-deadlocks re-acquiring a non-recursive SRW lock -- no window, and not a byte
++     * in the game's own log. dll_dir is <prefix>/lib/wine, and is NULL only when running
++     * from a build tree, where there is no installed library to fall back to.
++     */
++    if (!libd3dshared_path && dll_dir)
++        libd3dshared_path = default_path = build_path( dll_dir, "../external/libd3dshared.dylib" );
++
++    if (!libd3dshared_path)
++        return;
++
+     non_native_support_lib = dlopen( libd3dshared_path, RTLD_LOCAL );
+     if (non_native_support_lib)
+     {
+@@ -1345,11 +1362,13 @@
+             libd3dshared_code_end = (char *)libd3dshared_load_addr + code_size;
+         }
+ 
+-        TRACE( "Loaded libd3dshared.dylib, does%s support non-native code regions\n",
++        TRACE( "Loaded %s, does%s support non-native code regions\n", libd3dshared_path,
+                 supports_non_native_code_regions ? (supports_non_native_code_regions() ? "" : " not") : " not" );
+     }
+     else
+-        TRACE( "Loading libd3dshared.dylib failed: %s\n", dlerror() );
++        TRACE( "Loading %s failed: %s\n", libd3dshared_path, dlerror() );
++
++    free( default_path );
+ }
+ 
+ static NTSTATUS pe_module_loaded( void *args )

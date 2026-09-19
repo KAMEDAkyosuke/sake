@@ -81,8 +81,10 @@ Wine is LGPL, which is why CodeWeavers publish CrossOver's sources at all, and w
 approach is possible.
 
 Any patch sake carries against Wine's own source is a derivative of LGPL code and is
-**LGPL-2.1-or-later**, regardless of the licence on the rest of this repository. Keep such
-patches in their own directory with that stated plainly.
+**LGPL-2.1-or-later**, regardless of the licence on the rest of this repository. They live in
+`patches/`, which carries Wine's own `COPYING.LIB` as its `LICENSE` and says so in its
+`README.md`. A patch belongs nowhere else — burying one in `Sources/` to make a build system
+happy would hide the one thing about it that has to be visible.
 
 ## Why D3DMetal cannot simply be avoided
 

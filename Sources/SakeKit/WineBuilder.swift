@@ -1,6 +1,7 @@
 import Foundation
 
 public enum WinePhase: String, Sendable {
+    case patch
     case configure
     case sonames
     case make
@@ -60,10 +61,16 @@ public enum WineError: Error, Equatable, LocalizedError {
 public struct WineBuilder: Sendable {
     private let paths: Paths
     private let runner: ProcessRunner
+    private let patcher: WinePatcher
 
-    public init(paths: Paths = .default, runner: ProcessRunner = ProcessRunner()) {
+    public init(
+        paths: Paths = .default,
+        runner: ProcessRunner = ProcessRunner(),
+        patcher: WinePatcher = WinePatcher()
+    ) {
         self.paths = paths
         self.runner = runner
+        self.patcher = patcher
     }
 
     public var prefix: URL { paths.engine }
@@ -157,10 +164,9 @@ public struct WineBuilder: Sendable {
                         continuation.yield(.installed(version: installedVersion()))
                     } catch {
                         if !Task.isCancelled {
-                            let fromARun = (error as? WineError)?.cameFromARun ?? true
                             continuation.yield(.failed(
                                 reason: error.localizedDescription,
-                                log: fromARun ? logURL : nil
+                                log: logToOffer(after: error)
                             ))
                         }
                     }
@@ -170,6 +176,14 @@ public struct WineBuilder: Sendable {
             }
             continuation.onTermination = { _ in work.cancel() }
         }
+    }
+
+    /// Offering the log is only useful when something wrote to it. A missing prerequisite
+    /// and a patch that will not apply both say everything they have in the message itself.
+    private func logToOffer(after error: Error) -> URL? {
+        if let wine = error as? WineError, !wine.cameFromARun { return nil }
+        if error is PatchError { return nil }
+        return logURL
     }
 
     private func run(
@@ -191,6 +205,12 @@ public struct WineBuilder: Sendable {
         )
         let make = URL(filePath: "/usr/bin/make")
         let jobs = ProcessInfo.processInfo.activeProcessorCount
+
+        onPhase(.patch)
+        try await patcher.apply(to: source) { line in
+            log.write(line + "\n")
+            onOutput(line)
+        }
 
         onPhase(.configure)
         try await runPhase(
