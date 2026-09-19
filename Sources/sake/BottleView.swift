@@ -11,35 +11,9 @@ enum BottleStatus: Equatable {
 struct BottleView: View {
     let name: String
     let status: BottleStatus?
-    /// Why the button is off, as a sentence. `nil` when it is on.
-    let blockedBy: String?
-    let isCreating: Bool
-    let start: () -> Void
-    let stop: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Bottle")
-                        .font(.title2.weight(.semibold))
-                    Text("""
-                        The Windows environment the games live in. Making one is the first \
-                        time anything sake built is actually run.
-                        """)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                if isCreating {
-                    Button("Stop", action: stop)
-                } else {
-                    Button("Create", action: start)
-                        .disabled(blockedBy != nil)
-                }
-            }
-
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(name)
                     .font(.callout.monospaced())
@@ -47,7 +21,7 @@ struct BottleView: View {
 
                 switch status {
                 case .none:
-                    Text(blockedBy ?? "waiting")
+                    Text("waiting")
                         .font(.callout)
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)

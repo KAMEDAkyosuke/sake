@@ -45,6 +45,10 @@ Three things measured about this on 2026-09-18 (CLT 27.0, Swift 6.4, macOS 27.0)
 
 Delete the fallback once the CLT ship the plugin or an Xcode with the 27 SDK exists.
 
+Not every macro is in that state: **Observation's is one the CLT do expand.** `@Observable`
+type-checks against the 26.5 SDK with the Command Line Tools alone (measured 2026-09-19),
+so the app uses it. It is only SwiftUI's own macros on SDK 27 that have no plugin.
+
 `swift build` compiles; `./scripts/build-app.sh` assembles `target/Sake.app` and ad-hoc
 signs it. There is no Xcode project and none should be added. The version lives in `VERSION`
 and is substituted into `Info.plist.template`.

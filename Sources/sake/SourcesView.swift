@@ -11,31 +11,9 @@ enum SourceStatus: Equatable {
 
 struct SourcesView: View {
     let statuses: [String: SourceStatus]
-    let isFetching: Bool
-    let canStart: Bool
-    let start: () -> Void
-    let stop: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Sources")
-                        .font(.title2.weight(.semibold))
-                    Text("Downloaded, checked against a known hash, and unpacked. Nothing is built yet.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                if isFetching {
-                    Button("Stop", action: stop)
-                } else {
-                    Button("Download", action: start)
-                        .disabled(!canStart)
-                }
-            }
-
             ForEach(Component.all) { component in
                 SourceRow(component: component, status: statuses[component.id])
             }

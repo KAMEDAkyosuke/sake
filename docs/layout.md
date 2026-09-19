@@ -145,9 +145,14 @@ What that style actually is, measured in sake on 2026-09-19 (macOS 27.0, SDK 26.
 deployment target 15.0): an `NSPanel` carrying the utility style mask, at window level 3,
 which cannot become the main window, cannot be minimised, and has `hidesOnDeactivate` set.
 The last of those decides where it may be used — a window whose job is to say "download this
-from Apple" must not vanish the moment the user switches to a browser. So the main window is
-a plain `Window`, and the utility style is for the auxiliary windows the setup flow will put
-on top of it.
+from Apple" must not vanish the moment the user switches to a browser.
+
+That rules out more than this file first thought. sake has two windows as of 2026-09-19: the
+library, and the setup wizard. The wizard is exactly the window that says "download this from
+Apple", because that is what its D3DMetal step asks for. **So both are plain `Window`s and
+nothing uses the utility style yet.** The deployment target stays at 15 on its other
+grounds; when an auxiliary window does turn up — a build log is the obvious candidate — it
+is the one that can carry the style, because nothing about it sends the user elsewhere.
 
 Raise it when a macOS 26-only API earns it; raising a deployment target later is cheap.
 

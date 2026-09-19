@@ -68,10 +68,29 @@ login page. What a title is — executable, arguments, how to recognise its proc
 value, not code. Still to come: the two patches, and what else a title profile has to
 carry once a second one exists.
 
-### Phase 4 — the GUI proper
+### Phase 4 — the GUI proper (under way)
 
 Setup flow, library, per-title configuration, uninstall. `layout.md` covers where things go
 and why uninstall has to be an explicit action.
+
+**Started on 2026-09-19 by splitting the window in two.** Setting sake up is done once and
+running a game is done every day, and one scrolling column had them interleaved. Now there
+is a library window and a setup wizard, one step per screen with the whole list of steps
+beside it — the list stays because a step here can take tens of minutes and fail, and a
+wizard that shows only the current card leaves you with no idea where you were.
+
+Which step is current, and what blocks each one, is in `SakeKit` rather than the wizard: it
+is the only real decision the wizard makes, and logic in a view is logic that stops being
+tested.
+
+The library is a list with a detail pane rather than a row per game, for two reasons worth
+keeping: a row per game means a Play button per game, and the detail pane is where per-title
+settings go when they arrive. Importing is a sheet on that window rather than a window of
+its own — it belongs to one bottle, and it finishes in under a second. The setup wizard is
+a window instead precisely because it does not: it runs for tens of minutes and sends the
+user to a browser part way through.
+
+Still to come: more than one bottle, adding and editing titles, and uninstall.
 
 ## The Swift/subprocess boundary
 

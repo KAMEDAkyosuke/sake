@@ -17,12 +17,16 @@ page. Pressing Play there does not yet work — that needs a patch to Wine's own
 this tree does not carry. So no game runs, and if you were looking for something that plays
 today, this is not it.
 
+There are two windows: a library for what is installed and what can be started, and a setup
+wizard that walks the six steps above one at a time. The wizard opens itself when setup is
+not finished.
+
 What is here:
 
 | | |
 |---|---|
 | `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the D3DMetal step, the bottle, the import and starting a title |
-| `Sources/sake/` | the SwiftUI app, kept thin |
+| `Sources/sake/` | the SwiftUI app — two windows, kept thin |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
 | `scripts/build-app.sh` | builds `target/Sake.app` |
 | `scripts/test.sh` | runs the tests |

@@ -10,31 +10,9 @@ enum PrefixStatus: Equatable {
 
 struct PrefixView: View {
     let statuses: [String: PrefixStatus]
-    let isBuilding: Bool
-    let canStart: Bool
-    let start: () -> Void
-    let stop: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Prefix")
-                        .font(.title2.weight(.semibold))
-                    Text("The tools and libraries Wine is built against. This takes minutes, not seconds.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                if isBuilding {
-                    Button("Stop", action: stop)
-                } else {
-                    Button("Build", action: start)
-                        .disabled(!canStart)
-                }
-            }
-
             ForEach(BuildRecipe.all) { recipe in
                 PrefixRow(recipe: recipe, status: statuses[recipe.id])
             }

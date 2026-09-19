@@ -235,3 +235,55 @@ private let aGame = ["Program Files (x86)/Battle.net", "Program Files (x86)/Diab
     for entry in aGame { #expect(log.contains("=== cloned \(entry) ")) }
     #expect(events.last.map { if case .finished(let cloned, _) = $0 { cloned == 3 } else { false } } == true)
 }
+
+@Test func onlyTheEntriesAskedForAreCloned() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    let source = paths.root.appending(path: "crossover/Battle.net Desktop App")
+    try makeSourceBottle(at: source, installed: aGame)
+    try makeDestinationBottle(paths)
+
+    let importer = BottleImporter(paths: paths, source: CrossOverBottle(url: source))
+    let wanted = "Program Files (x86)/Battle.net"
+    let events = await collect(importer.run([wanted]))
+
+    #expect(events.contains(.started(count: 1)))
+    #expect(text(at: importer.bottle.driveC.appending(path: wanted)) != nil)
+    for skipped in aGame where skipped != wanted {
+        #expect(text(at: importer.bottle.driveC.appending(path: skipped)) == nil)
+    }
+    // The rest stay on offer rather than being forgotten.
+    #expect(importer.candidates().count == 2)
+}
+
+@Test func anEntryThatIsNotOnOfferIsNotCloned() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    let source = paths.root.appending(path: "crossover/Battle.net Desktop App")
+    try makeSourceBottle(at: source, installed: aGame)
+    try makeDestinationBottle(paths)
+
+    let importer = BottleImporter(paths: paths, source: CrossOverBottle(url: source))
+    // Whatever a caller hands in is intersected with the offer, so nothing it invents is
+    // joined onto drive_c.
+    let events = await collect(importer.run(["../../../etc", "Program Files (x86)/Nothing"]))
+
+    #expect(events == [.nothingToImport, .finished(cloned: 0, bytes: 0)])
+    #expect(!FileManager.default.fileExists(
+        atPath: importer.bottle.driveC.appending(path: "Program Files (x86)/Nothing").path
+    ))
+}
+
+@Test func theOfferCarriesWhatEachEntryWouldBringOver() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    let source = paths.root.appending(path: "crossover/Battle.net Desktop App")
+    try makeSourceBottle(at: source, installed: aGame)
+    try makeDestinationBottle(paths)
+
+    let importer = BottleImporter(paths: paths, source: CrossOverBottle(url: source))
+    let sizes = await importer.sizes(of: importer.candidates())
+
+    #expect(sizes.count == aGame.count)
+    #expect(sizes.values.allSatisfy { $0 > 0 })
+}

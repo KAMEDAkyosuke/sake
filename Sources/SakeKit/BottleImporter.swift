@@ -119,13 +119,15 @@ public struct BottleImporter: Sendable {
         return found
     }
 
-    public func run() -> AsyncStream<ImportEvent> {
+    /// `nil` takes everything ``candidates()`` found. A list takes only what is in both,
+    /// so a caller cannot name a path of its own and have it joined onto `drive_c`.
+    public func run(_ entries: [String]? = nil) -> AsyncStream<ImportEvent> {
         AsyncStream { continuation in
             let work = Task {
                 var done = 0
                 var bytes: Int64 = 0
                 do {
-                    (done, bytes) = try clone { continuation.yield($0) }
+                    (done, bytes) = try clone(entries) { continuation.yield($0) }
                 } catch {
                     if !Task.isCancelled {
                         let fromARun = (error as? ImportError)?.cameFromARun ?? true
@@ -143,13 +145,15 @@ public struct BottleImporter: Sendable {
     }
 
     private func clone(
+        _ wanted: [String]?,
         onEvent: @Sendable (ImportEvent) -> Void
     ) throws -> (cloned: Int, bytes: Int64) {
         if let missing = missingPrerequisite { throw ImportError.notReady(missing) }
         try Self.requireOneVolume(source: source.driveC, destination: bottle.url)
         sweepPartials()
 
-        let entries = candidates()
+        let entries = wanted.map { chosen in candidates().filter(Set(chosen).contains) }
+            ?? candidates()
         guard !entries.isEmpty else {
             onEvent(.nothingToImport)
             return (0, 0)
@@ -226,6 +230,20 @@ public struct BottleImporter: Sendable {
 
     private func contents(of directory: URL) -> [String] {
         ((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []).sorted()
+    }
+
+    /// What each entry would bring over, for the list the user chooses from.
+    ///
+    /// Not folded into ``candidates()``, which is a pair of directory listings and stays
+    /// that way: this walks the source, and a bottle with a large library in it takes long
+    /// enough that a window would wait on it.
+    public func sizes(of entries: [String]) async -> [String: Int64] {
+        var found: [String: Int64] = [:]
+        for entry in entries {
+            if Task.isCancelled { break }
+            found[entry] = size(of: source.driveC.appending(path: entry))
+        }
+        return found
     }
 
     private func size(of url: URL) -> Int64 {
