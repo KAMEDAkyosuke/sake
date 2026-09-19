@@ -3,20 +3,21 @@
 Run Windows games on an Apple silicon Mac, by building CrossOver's Wine from CodeWeavers'
 published LGPL sources — with a GUI, so it does not take a terminal.
 
-## Status: it builds Wine, and nothing has been run under it
+## Status: it builds an engine, and nothing has been run under it
 
 **No game runs.** What the app does today is answer whether this Mac can do the rest — Apple
 silicon, Rosetta 2, the Command Line Tools, Apple's Game Porting Toolkit, room on disk —
 then download the eleven sources, check them against known hashes, unpack them, build the
-nine tools and libraries Wine is configured against, and build CrossOver's Wine itself.
-Between that and a game there is still D3DMetal, a prefix to run in, and a way to start a
+tools and libraries Wine is configured against, build CrossOver's Wine itself, and guide
+Apple's D3DMetal in from an image you mounted. That is a complete 1.1 GB engine that has
+never been started. Between it and a game there is a prefix to create and a way to launch a
 title. If you were looking for something that runs a game today, this is not it.
 
 What is here:
 
 | | |
 |---|---|
-| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build and the Wine build |
+| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build and the D3DMetal step |
 | `Sources/sake/` | the SwiftUI app, kept thin |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
 | `scripts/build-app.sh` | builds `target/Sake.app` |

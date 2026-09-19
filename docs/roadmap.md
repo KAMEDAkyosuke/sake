@@ -27,30 +27,27 @@ since measured something itself, the section says so and carries its own date.
 An app that builds, launches and does nothing. Repository conventions, and the prototype's
 knowledge written down.
 
-### Phase 2 — the build pipeline in Swift (in progress)
+### Phase 2 — the build pipeline in Swift (done)
 
 Download, verify, configure, `make`, install — driven from Swift, reporting progress the UI
-can render. This is where `wine-build.md` becomes code.
+can render. This is where `wine-build.md` became code.
 
-Success looks like: a button that produces a working Wine, a progress view that names the
-current step, and a failure that says "the Game Porting Toolkit is not mounted" rather than
-printing a non-zero exit status.
+The chain ran end to end on 2026-09-19: the preflight checks (Apple silicon, Rosetta 2, the
+Command Line Tools, the Game Porting Toolkit, disk space), the two pieces the rest sits on
+(the on-disk layout as a value type, and a subprocess runner that streams output and can be
+cancelled), fetching the eleven sources against pinned hashes, building the tools and
+libraries into the engine prefix, building Wine itself against them — configure, the
+`@loader_path` soname rewrite, make, install, and a check that this is CrossOver's tree and
+not upstream's — and guiding Apple's D3DMetal in from an image the user mounted. That leaves
+a 1.1 GB engine.
 
-Standing so far: the preflight checks — Apple silicon, Rosetta 2, the Command Line Tools,
-the Game Porting Toolkit, disk space — the two pieces the rest of the phase sits on (the
-on-disk layout as a value type, and a subprocess runner that streams output and can be
-cancelled), fetching the eleven sources against pinned hashes, building the nine tools and
-libraries into the engine prefix, and building Wine itself against them: configure, the
-`@loader_path` soname rewrite, make, install, and a check that what came out is CrossOver's
-tree and not upstream's. The whole chain ran end to end on 2026-09-19 and leaves a 1.1 GB
-engine.
+What it does not do is **run** any of it. Starting Wine needs a prefix, and that is Phase 3.
 
-Left: the guided D3DMetal step. Nothing has been *run* under the Wine that comes out —
-running it needs a prefix, which is Phase 3.
+### Phase 3 — bottles and titles (next)
 
-### Phase 3 — bottles and titles
-
-Creating prefixes, importing an existing install, per-title settings. The per-title knowledge
+Creating prefixes, importing an existing install, per-title settings. This is also where the
+prototype's two ntdll patches have to land, and where the three settings in `runtime.md`
+stop being something only the prototype has tried. The per-title knowledge
 is pure data (executable path, arguments, environment, how to recognise its process), so it
 belongs in a declarative form the GUI can read and edit — not in code.
 

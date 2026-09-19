@@ -89,7 +89,11 @@ clang is *not* required; the Mach-O side builds with stock Apple clang.
   exec'ing it strips every `DYLD_*` variable. Wine's binaries are already x86_64, so Rosetta
   handles them anyway.
 - **`make install` overwrites D3DMetal.** It puts Wine's own `d3d11`/`d3d12`/`dxgi.dll` back,
-  so installing D3DMetal has to happen *after* every `make install`, not once.
+  so installing D3DMetal has to happen *after* every `make install`, not once. sake keeps its
+  own copy of Apple's `redist/lib`, so putting it back is one press and does not need the
+  toolkit mounted again — but **nothing in the code calls it**. A rebuild button would have
+  to, and there is no rebuild button yet: deleting the engine is the only way to re-run
+  `make install` today, and that takes D3DMetal with it.
 - **Sonames must not be leaf names.** A leaf name resolves only through
   `DYLD_LIBRARY_PATH`, and that does not reach Wine's child processes. sake rewrites the
   four in `include/config.h` to `@loader_path`-relative paths between configure and make;

@@ -14,6 +14,10 @@ struct SetupView: View {
     @State private var wineBlockedBy: String?
     @State private var wineBuild: Task<Void, Never>?
     @State private var wineGeneration = 0
+    @State private var d3dMetal: D3DMetalStatus?
+    @State private var d3dMetalBlockedBy: String?
+    @State private var d3dMetalInstall: Task<Void, Never>?
+    @State private var d3dMetalGeneration = 0
 
     var body: some View {
         ScrollView {
@@ -51,6 +55,16 @@ struct SetupView: View {
                     start: startWine,
                     stop: stopWine
                 )
+
+                Divider()
+
+                D3DMetalView(
+                    status: d3dMetal,
+                    blockedBy: d3dMetalBlockedBy,
+                    isInstalling: d3dMetalInstall != nil,
+                    start: startD3DMetal,
+                    stop: stopD3DMetal
+                )
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -87,6 +101,14 @@ struct SetupView: View {
         if builder.isBuilt { wine = .alreadyBuilt }
         wineBlockedBy = machineIsReady
             ? builder.missingPrerequisite
+            : "This Mac is not ready yet."
+
+        let installer = D3DMetalInstaller(paths: paths)
+        if installer.isInstalled {
+            d3dMetal = .alreadyInstalled(version: installer.installedVersion())
+        }
+        d3dMetalBlockedBy = machineIsReady
+            ? installer.missingPrerequisite
             : "This Mac is not ready yet."
     }
 
@@ -215,6 +237,48 @@ struct SetupView: View {
             wine = .built(version: version)
         case .failed(let reason, _):
             wine = .failed(reason)
+        case .finished:
+            break
+        }
+    }
+
+    private func startD3DMetal() {
+        guard d3dMetalInstall == nil else { return }
+        d3dMetalGeneration += 1
+        let generation = d3dMetalGeneration
+        d3dMetalInstall = Task {
+            for await event in D3DMetalInstaller().install() {
+                apply(event)
+            }
+            if generation == d3dMetalGeneration {
+                d3dMetalInstall = nil
+                survey()
+            }
+        }
+    }
+
+    private func stopD3DMetal() {
+        d3dMetalGeneration += 1
+        d3dMetalInstall?.cancel()
+        d3dMetalInstall = nil
+    }
+
+    private func apply(_ event: D3DMetalEvent) {
+        switch event {
+        case .alreadyInstalled(let version):
+            d3dMetal = .alreadyInstalled(version: version)
+        case .started:
+            d3dMetal = .working(phase: "starting", item: "")
+        case .phase(let phase):
+            d3dMetal = .working(phase: phase.rawValue, item: "")
+        case .placed(let item):
+            if case .working(let phase, _) = d3dMetal {
+                d3dMetal = .working(phase: phase, item: item)
+            }
+        case .installed(let version):
+            d3dMetal = .installed(version: version)
+        case .failed(let reason):
+            d3dMetal = .failed(reason)
         case .finished:
             break
         }

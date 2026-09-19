@@ -69,6 +69,9 @@ public enum Preflight {
             .commandLineTools(clangPath: await clangPath(runner: runner)),
             .gamePortingToolkit(
                 d3dMetalInstalled: fileManager.fileExists(atPath: paths.d3dMetalFramework.path),
+                d3dMetalImported: fileManager.fileExists(
+                    atPath: paths.d3dMetal.appending(path: "external/D3DMetal.framework").path
+                ),
                 mountedVolumes: contentsOfDirectory(atPath: "/Volumes"),
                 nestedImageNames: contentsOfDirectory(atPath: GamePortingToolkit.outerVolume.path)
             ),
@@ -152,12 +155,21 @@ extension Requirement {
 
     static func gamePortingToolkit(
         d3dMetalInstalled: Bool,
+        d3dMetalImported: Bool = false,
         mountedVolumes: [String],
         nestedImageNames: [String]
     ) -> Requirement {
         if d3dMetalInstalled {
             return Requirement(kind: .gamePortingToolkit, status: .satisfied(
                 "D3DMetal is already installed in the engine."
+            ))
+        }
+        // The toolkit only has to be mounted once: sake keeps its own copy of redist/lib so
+        // that putting D3DMetal back after a rebuild does not send the user looking for the
+        // image again. See docs/licensing.md.
+        if d3dMetalImported {
+            return Requirement(kind: .gamePortingToolkit, status: .satisfied(
+                "D3DMetal is in sake's cache; the toolkit does not need to be mounted again."
             ))
         }
         if let volume = mountedVolumes.first(where: {

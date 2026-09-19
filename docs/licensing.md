@@ -24,14 +24,40 @@ What sake may do is guide the user through supplying it themselves:
 Accepting Apple's licence is the user's act, not something the app should perform for them.
 This is why no open-source launcher bundles D3DMetal and why they all make you supply it.
 
-Two practical notes for whoever implements this:
+### What sake actually does
 
-- The redistributable brings `lib/external/D3DMetal.framework` + `libd3dshared.dylib`,
-  `lib/wine/x86_64-unix/*.so`, and `lib/wine/x86_64-windows/*.dll` which **replace Wine's own
-  d3d11/d3d12/dxgi**. The unix half is easy to forget.
-- There is no `i386` directory. D3DMetal is x86_64-only, so 32-bit processes get nothing from
-  it. CrossOver fills that gap with DXVK and DXMT for i386; the d4-mac prototype did not, and
-  covered the 32-bit GPU need with `--use-angle=vulkan` instead.
+Implemented and measured on 2026-09-19. `redist/lib` on the evaluation-environment volume is
+68 MB and holds exactly this:
+
+```
+external/D3DMetal.framework        67 MB, three symlinks inside it
+external/libd3dshared.dylib
+wine/x86_64-unix/*.so              d3d10 d3d11 d3d12 dxgi nvapi64 nvngx-on-metalfx
+wine/x86_64-windows/*.dll          the same six
+```
+
+sake mounts the nested image with `hdiutil attach -nobrowse -readonly`, copies that tree into
+`~/Library/Caches/Sake/d3dmetal`, and copies it from there into the engine. Two things about
+that worth keeping:
+
+- **The PE half replaces Wine's own d3d10/d3d11/d3d12/dxgi.dll.** Apple's are a fifth to a
+  third of the size and carry `D3DMetalDLLs` where Wine's import `vkd3d_*`, which is how sake
+  checks the right ones are in place. Wine builds no unix-side `d3d*.so` at all, so only the
+  PE half is ever undone.
+- **There is no `i386` directory.** D3DMetal is x86_64-only, so 32-bit processes get nothing
+  from it. CrossOver fills that gap with DXVK and DXMT for i386; the d4-mac prototype did not,
+  and covered the 32-bit GPU need with `--use-angle=vulkan` instead.
+
+### Why the cache copy is inside the line
+
+Wine's `make install` writes its own d3d11/d3d12/dxgi back over Apple's, so D3DMetal has to
+go in again after every one. Sending the user back to find the image each time would be
+miserable, so sake keeps its own copy of `redist/lib`.
+
+That copy is **the user's**, made on their machine from media they obtained under Apple's
+licence. sake does not distribute it, does not put it on a network, and deletes it with the
+cache. The three things sake must never do are unchanged: it does not ship D3DMetal, does not
+download it on the user's behalf, and does not take it out of an installed CrossOver.
 
 ## Wine and the patches
 

@@ -39,6 +39,11 @@ public struct Paths: Sendable, Equatable {
     /// beside it for i386: under WoW64 the unix side is x86_64 only.
     public var wineUnixLibraries: URL { engine.appending(path: "lib/wine/x86_64-unix") }
 
+    /// `redist/lib` out of Apple's image, kept as the user's own copy so the toolkit does
+    /// not have to stay mounted to put D3DMetal back after a rebuild. See docs/licensing.md
+    /// for why keeping it is inside the line and shipping it is not.
+    public var d3dMetal: URL { cache.appending(path: "d3dmetal") }
+
     /// Apple's redistributable unpacks into the engine here. `libd3dshared.dylib` has to sit
     /// beside the framework rather than beside the `.so` files that load it: it resolves
     /// `@rpath/D3DMetal.framework/D3DMetal` relative to its own location. See docs/runtime.md.

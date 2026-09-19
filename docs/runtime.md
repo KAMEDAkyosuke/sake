@@ -2,7 +2,8 @@
 
 A built Wine is not a working one. This is what the d4-mac prototype needed on top of the
 build to get Diablo IV from "starts" to "plays", verified 2026-09-17 and 2026-09-18 on one
-machine. **sake has verified none of it.**
+machine. **sake has run none of it.** The one piece it has built is the file layout D3DMetal
+needs, dated below; everything about behaviour is still the prototype's.
 
 ## Three settings carry the whole thing
 
@@ -56,6 +57,13 @@ The 32-bit client is structurally unaffected: `pe_module_loaded()` reaches
 `d3d12.so` declares `LC_RPATH = @loader_path` and looks for `libd3dshared.dylib` beside
 itself; `libd3dshared` then `dlopen`s `@rpath/D3DMetal.framework/D3DMetal` relative to *its*
 own location. Copying only `libd3dshared` next to the `.so` files breaks it.
+
+sake does this on 2026-09-19: it copies `libd3dshared.dylib` into
+`lib/wine/x86_64-unix/` and puts a `D3DMetal.framework` symlink beside it pointing at
+`../../external/D3DMetal.framework`, then refuses to call the install done unless
+`lib/wine/x86_64-unix/D3DMetal.framework/D3DMetal` resolves. The engine that comes out has
+`d3d12.so` linking `@rpath/libd3dshared.dylib` and that symlink landing on a real x86_64
+Mach-O. **Nothing has been run against it.**
 
 ## Two patches to Wine's own code
 
