@@ -56,7 +56,7 @@ macOS 14 is the floor D3DMetal sets. sake targets 15 anyway, for reasons above i
 than below it:
 
 - SwiftUI's `UtilityWindow` is `@available(macOS 15.0, *)`, and it is the window style this
-  app wants for its setup and pairing-style dialogs. 14 would rule it out.
+  app wants for the setup flow's own windows. 14 would rule it out.
 - The Game Porting Toolkit that supplies D3DMetal wanted Sequoia by version 3, so users who
   can obtain D3DMetal at all are essentially all on 15 or newer.
 - Nothing is gained by going higher. The UI this app needs is available at 15, so raising
