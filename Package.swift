@@ -8,9 +8,10 @@ let package = Package(
     name: "sake",
     platforms: [.macOS(.v15)],
     targets: [
-        .executableTarget(
-            name: "sake",
-            path: "Sources"
-        )
+        // Everything that is not a view, so it can be tested without a window. The app
+        // target stays thin.
+        .target(name: "SakeKit"),
+        .executableTarget(name: "sake", dependencies: ["SakeKit"]),
+        .testTarget(name: "SakeKitTests", dependencies: ["SakeKit"]),
     ]
 )

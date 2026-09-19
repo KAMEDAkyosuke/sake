@@ -3,19 +3,23 @@
 Run Windows games on an Apple silicon Mac, by building CrossOver's Wine from CodeWeavers'
 published LGPL sources — with a GUI, so it does not take a terminal.
 
-## Status: a skeleton
+## Status: it checks your Mac, and that is all
 
-**Nothing works yet.** This repository currently holds an app that opens one window and does
-nothing, plus the design and the hard-won knowledge it will be built on. If you were looking
-for something that runs a game today, this is not it.
+**Nothing is downloaded or built yet, and no game runs.** What the app does today is open
+one window and answer whether this Mac can do the rest — Apple silicon, Rosetta 2, the
+Command Line Tools, Apple's Game Porting Toolkit, and room on disk — saying what to do about
+each one that is missing. If you were looking for something that runs a game today, this is
+not it.
 
 What is here:
 
 | | |
 |---|---|
-| `Sources/` | a SwiftUI app with one placeholder window |
+| `Sources/SakeKit/` | the on-disk layout, a subprocess runner, and the preflight checks |
+| `Sources/sake/` | the SwiftUI app, kept thin |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
 | `scripts/build-app.sh` | builds `target/Sake.app` |
+| `scripts/test.sh` | runs the tests |
 
 ## The goal
 
@@ -45,6 +49,7 @@ Requires the Xcode Command Line Tools. Xcode is not needed.
 ```sh
 ./scripts/build-app.sh            # target/Sake.app
 ./scripts/build-app.sh --release  # plus a zip
+./scripts/test.sh                 # the tests
 ```
 
 On macOS 27 the Command Line Tools default to the macOS 27.0 SDK, which SwiftUI cannot be

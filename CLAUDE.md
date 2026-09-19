@@ -49,6 +49,25 @@ Delete the fallback once the CLT ship the plugin or an Xcode with the 27 SDK exi
 signs it. There is no Xcode project and none should be added. The version lives in `VERSION`
 and is substituted into `Info.plist.template`.
 
+## Tests
+
+`./scripts/test.sh`. It needs two overrides, neither of which is discoverable from the error
+messages. Measured 2026-09-19 (CLT 27.0, Swift 6.4, macOS 27.0):
+
+- **The Command Line Tools ship no XCTest.** `import XCTest` fails with `unable to resolve
+  module dependency: 'XCTest'`, so the tests are swift-testing.
+- **swift-testing's macro plugin sits where SwiftPM does not look.** The CLT do ship
+  `libTestingMacros.dylib`, but in `usr/lib/swift/host/plugins/testing/` — one level below
+  the `plugins/` directory SwiftPM scans. Without help every `@Test` fails with `plugin for
+  module 'TestingMacros' not found`, which is the same shape of error as the SwiftUI one
+  above and a different cause. `-Xswiftc -plugin-path -Xswiftc <that directory>` fixes it.
+
+## Package layout
+
+`SakeKit` holds everything that is not a view; the `sake` target is the SwiftUI app and
+stays thin. The tests exercise `SakeKit`, so logic that drifts into a view is logic that
+stops being tested.
+
 ## Deployment target
 
 macOS 15, in both `Package.swift` and `Info.plist.template` — keep them in step. The

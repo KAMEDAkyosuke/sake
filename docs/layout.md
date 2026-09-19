@@ -126,3 +126,7 @@ away the diagnostic tool exactly when it is needed. Its numbers: 146 characters 
 **92 is in the untested gap between the two known points.** Measure it before committing the
 engine to that path — and note that `@loader_path`-relative sonames, which are short, remove
 the problem entirely if they land first.
+
+sake's `Paths` therefore takes both roots as parameters rather than baking them in, so that
+moving the engine when this is measured does not reach into every caller. The measurement
+itself has not been made.

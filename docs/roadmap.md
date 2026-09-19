@@ -26,7 +26,7 @@ says where and when it was measured; sake itself has verified none of it.
 An app that builds, launches and does nothing. Repository conventions, and the prototype's
 knowledge written down.
 
-### Phase 2 — the build pipeline in Swift
+### Phase 2 — the build pipeline in Swift (in progress)
 
 Download, verify, configure, `make`, install — driven from Swift, reporting progress the UI
 can render. This is where `wine-build.md` becomes code.
@@ -34,6 +34,11 @@ can render. This is where `wine-build.md` becomes code.
 Success looks like: a button that produces a working Wine, a progress view that names the
 current step, and a failure that says "the Game Porting Toolkit is not mounted" rather than
 printing a non-zero exit status.
+
+Standing so far: the preflight checks — Apple silicon, Rosetta 2, the Command Line Tools,
+the Game Porting Toolkit, disk space — and the two pieces the rest of the phase sits on, the
+on-disk layout as a value type and a subprocess runner that streams output and can be
+cancelled. Nothing downloads or builds yet.
 
 ### Phase 3 — bottles and titles
 
