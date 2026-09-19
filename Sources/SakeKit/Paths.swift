@@ -30,6 +30,15 @@ public struct Paths: Sendable, Equatable {
     public var toolchain: URL { cache.appending(path: "toolchain") }
     public var build: URL { cache.appending(path: "build") }
 
+    /// Wine is built out of tree, which leaves its unpacked source as it came out of the
+    /// tarball -- the only copy sake has of it.
+    public var wineBuild: URL { build.appending(path: "wine") }
+
+    /// Wine's unix-side libraries, and the only place anything `dlopen`s the engine's dylibs
+    /// from, so this is the directory a `@loader_path` soname resolves against. Nothing sits
+    /// beside it for i386: under WoW64 the unix side is x86_64 only.
+    public var wineUnixLibraries: URL { engine.appending(path: "lib/wine/x86_64-unix") }
+
     /// Apple's redistributable unpacks into the engine here. `libd3dshared.dylib` has to sit
     /// beside the framework rather than beside the `.so` files that load it: it resolves
     /// `@rpath/D3DMetal.framework/D3DMetal` relative to its own location. See docs/runtime.md.

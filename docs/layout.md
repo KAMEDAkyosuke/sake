@@ -147,8 +147,24 @@ What genuinely stays pinned is `bison`, which compiles in the location of its sk
 (`prefix/share/bison`). That only bites a *rebuild* after a move, not a run, and
 `BISON_PKGDATADIR` overrides it.
 
-So sake should write `@loader_path`-relative sonames from the start. **This has been measured
-only in isolation, never against a real Wine build** — that remains to be done.
+So sake writes `@loader_path`-relative sonames, rewriting `include/config.h` between
+configure and make.
+
+Measured against a real build on 2026-09-19, which this file previously said remained to be
+done:
+
+- The four come out as `@loader_path/../../libfreetype.6.dylib` and the like — `../..`
+  because the only thing that `dlopen`s them is `lib/wine/x86_64-unix/`, two levels under
+  `lib`. There is no `i386-unix` beside it; under WoW64 the unix side is x86_64 only.
+- `strings` finds **no** engine path left in any `lib/wine/x86_64-unix/*.so`. The first four
+  rows of the table above are gone.
+- An x86_64 dylib placed in that directory `dlopen`s all four by those exact strings — and
+  still does after the whole engine tree is moved elsewhere.
+
+What that does not show is Wine itself loading them, which needs a prefix to run in. Rows
+five and six of the table survive as expected: `ntdll.so` and `bin/wine` still carry
+`engine/{bin,lib,lib/wine,share/wine}`, which is what Wine recomputes from `dladdr` at
+startup rather than trusting.
 
 ## Path length is a real constraint, and the new path is untested
 
@@ -164,9 +180,10 @@ away the diagnostic tool exactly when it is needed. Its numbers: 146 characters 
 | `~/Library/Sake` | ~65 |
 
 The 92 that sat in the untested gap between the two known points is no longer a question to
-answer: `~/Library/Sake` comes out at 65 on a fifteen-character user name, shorter than the
-length already known to work. `@loader_path`-relative sonames would remove the constraint
-altogether and are still worth doing, but nothing depends on them now.
+answer twice over. `~/Library/Sake` comes out at 65 on a fifteen-character user name, shorter
+than the length already known to work — and as of 2026-09-19 sake writes `@loader_path`
+sonames anyway, whose longest is 38 characters and does not depend on where the engine lives
+at all.
 
 `Paths` still takes both roots as parameters, so a root that turns out to be wrong again does
 not reach into every caller.

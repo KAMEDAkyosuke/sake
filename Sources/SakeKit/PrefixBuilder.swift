@@ -43,21 +43,25 @@ public struct PrefixBuilder: Sendable {
         self.runner = runner
     }
 
-    /// One prefix for all of it, the engine. Wine dlopens these dylibs by absolute path at
-    /// runtime, so they belong with the product rather than in a cache that may be purged.
+    /// One prefix for all of it, the engine. Wine dlopens these dylibs at runtime, so they
+    /// belong with the product rather than in a cache that may be purged.
     public var prefix: URL { paths.engine }
 
     public func logURL(for recipe: BuildRecipe) -> URL {
         paths.build.appending(path: "\(recipe.componentID).log")
     }
 
+    /// `alsoOnPath` sits behind the prefix and ahead of the system, which is where a
+    /// toolchain has to be to be found by a bare name -- see ``WineBuilder``.
     public static func environment(
         prefix: URL,
+        alsoOnPath: [URL] = [],
         inheriting base: [String: String] = ProcessInfo.processInfo.environment
     ) -> [String: String] {
         var environment = base
         let inherited = base["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
-        environment["PATH"] = "\(prefix.appending(path: "bin").path):\(inherited)"
+        let ours = ([prefix.appending(path: "bin")] + alsoOnPath).map(\.path)
+        environment["PATH"] = (ours + [inherited]).joined(separator: ":")
         environment["PKG_CONFIG_PATH"] = prefix.appending(path: "lib/pkgconfig").path
         environment["CPPFLAGS"] = "-I\(prefix.appending(path: "include").path)"
         environment["LDFLAGS"] = "-L\(prefix.appending(path: "lib").path)"
@@ -78,8 +82,8 @@ public struct PrefixBuilder: Sendable {
                     continuation.yield(.started(recipe))
                     do {
                         switch recipe.kind {
-                        case .autotools(let arguments):
-                            try await runAutotools(recipe, configure: arguments) { phase in
+                        case .autotools:
+                            try await runAutotools(recipe, configure: recipe.configureArguments) { phase in
                                 continuation.yield(.phase(recipe, phase))
                             } onOutput: { line in
                                 continuation.yield(.output(recipe, line))
@@ -204,29 +208,5 @@ public struct PrefixBuilder: Sendable {
             return entry
         }
         return nil
-    }
-}
-
-private final class LogFile: @unchecked Sendable {
-    private let lock = NSLock()
-    private let handle: FileHandle
-
-    init(at url: URL) throws {
-        FileManager.default.createFile(atPath: url.path, contents: nil)
-        handle = try FileHandle(forWritingTo: url)
-        try handle.truncate(atOffset: 0)
-    }
-
-    func write(_ text: String) {
-        guard let data = text.data(using: .utf8) else { return }
-        lock.lock()
-        defer { lock.unlock() }
-        try? handle.write(contentsOf: data)
-    }
-
-    func close() {
-        lock.lock()
-        defer { lock.unlock() }
-        try? handle.close()
     }
 }

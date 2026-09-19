@@ -65,13 +65,33 @@ private let pkgconf = BuildRecipe.all.first { $0.componentID == "pkgconf" }!
     }
 }
 
-@Test func everyRecipeSaysX86_64OutLoudBecauseTheBuildCannotBeTranslated() {
+@Test func whatGoesInsideWineSaysX86_64OutLoudAndTheBuildToolsDoNot() {
     for recipe in BuildRecipe.all {
-        guard case .autotools(let configure) = recipe.kind else { continue }
+        guard case .autotools = recipe.kind else { continue }
+        let configure = recipe.configureArguments
 
-        #expect(configure.contains("CC=clang -arch x86_64"), "\(recipe.id) would build arm64")
-        #expect(configure.contains("--host=x86_64-apple-darwin"), "\(recipe.id) has no host triplet")
-        #expect(configure.contains("--build=x86_64-apple-darwin"), "\(recipe.id) has no build triplet")
+        if recipe.insideWine {
+            // The build cannot be run translated with the Command Line Tools alone, so the
+            // target has to be named instead. See docs/wine-build.md.
+            #expect(configure.contains("CC=clang -arch x86_64"), "\(recipe.id) would build arm64")
+            #expect(configure.contains("--host=x86_64-apple-darwin"), "\(recipe.id) has no host triplet")
+            #expect(configure.contains("--build=x86_64-apple-darwin"), "\(recipe.id) has no build triplet")
+        } else {
+            // An x86_64 build tool dies the moment it execs an xcode-select shim, because
+            // libxcrun.dylib ships arm64 and arm64e only -- and bison execs /usr/bin/m4.
+            #expect(!configure.contains("CC=clang -arch x86_64"), "\(recipe.id) is a build tool")
+            #expect(!configure.contains { $0.hasPrefix("--host=") }, "\(recipe.id) is a build tool")
+        }
+    }
+}
+
+@Test func onlyTheToolsThatNeverEndUpInsideWineAreBuiltNative() {
+    let native = Set(BuildRecipe.all.filter { !$0.insideWine }.map(\.id))
+
+    #expect(native == ["bison", "pkgconf"])
+    // Anything Wine dlopens is loaded into an x86_64 process, so it cannot be native.
+    for recipe in BuildRecipe.all where recipe.wineSoname != nil {
+        #expect(recipe.insideWine, "\(recipe.id) is dlopened by Wine")
     }
 }
 
@@ -106,7 +126,8 @@ private let pkgconf = BuildRecipe.all.first { $0.componentID == "pkgconf" }!
     let source = pkgconf.component.unpackedURL(in: paths)
     let arguments = try String(contentsOf: source.appending(path: "configure.args"), encoding: .utf8)
     #expect(arguments.contains("--prefix=\(builder.prefix.path)"))
-    #expect(arguments.contains("CC=clang -arch x86_64"))
+    // pkgconf only runs on this machine, so what reaches configure says nothing about x86_64.
+    #expect(!arguments.contains("CC=clang -arch x86_64"))
 
     let path = try String(contentsOf: source.appending(path: "configure.path"), encoding: .utf8)
     #expect(path.hasPrefix(builder.prefix.appending(path: "bin").path + ":"))

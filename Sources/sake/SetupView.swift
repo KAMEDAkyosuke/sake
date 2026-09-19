@@ -10,6 +10,10 @@ struct SetupView: View {
     @State private var prefix: [String: PrefixStatus] = [:]
     @State private var build: Task<Void, Never>?
     @State private var buildGeneration = 0
+    @State private var wine: WineStatus?
+    @State private var wineBlockedBy: String?
+    @State private var wineBuild: Task<Void, Never>?
+    @State private var wineGeneration = 0
 
     var body: some View {
         ScrollView {
@@ -36,6 +40,16 @@ struct SetupView: View {
                     canStart: machineIsReady,
                     start: startBuilding,
                     stop: stopBuilding
+                )
+
+                Divider()
+
+                WineView(
+                    status: wine,
+                    blockedBy: wineBlockedBy,
+                    isBuilding: wineBuild != nil,
+                    start: startWine,
+                    stop: stopWine
                 )
             }
             .padding(24)
@@ -68,6 +82,12 @@ struct SetupView: View {
         for recipe in BuildRecipe.all where recipe.isBuilt(in: prefixURL) {
             prefix[recipe.id] = .alreadyBuilt
         }
+
+        let builder = WineBuilder(paths: paths)
+        if builder.isBuilt { wine = .alreadyBuilt }
+        wineBlockedBy = machineIsReady
+            ? builder.missingPrerequisite
+            : "This Mac is not ready yet."
     }
 
     private func startFetching() {
@@ -153,6 +173,48 @@ struct SetupView: View {
             prefix[recipe.id] = .built
         case .failed(let recipe, let reason, _):
             prefix[recipe.id] = .failed(reason)
+        case .finished:
+            break
+        }
+    }
+
+    private func startWine() {
+        guard wineBuild == nil else { return }
+        wineGeneration += 1
+        let generation = wineGeneration
+        wineBuild = Task {
+            for await event in WineBuilder().build() {
+                apply(event)
+            }
+            if generation == wineGeneration {
+                wineBuild = nil
+                survey()
+            }
+        }
+    }
+
+    private func stopWine() {
+        wineGeneration += 1
+        wineBuild?.cancel()
+        wineBuild = nil
+    }
+
+    private func apply(_ event: WineEvent) {
+        switch event {
+        case .alreadyBuilt:
+            wine = .alreadyBuilt
+        case .started:
+            wine = .working(phase: "starting", line: "")
+        case .phase(let phase):
+            wine = .working(phase: phase.rawValue, line: "")
+        case .output(let line):
+            if case .working(let phase, _) = wine {
+                wine = .working(phase: phase, line: line)
+            }
+        case .installed(let version):
+            wine = .built(version: version)
+        case .failed(let reason, _):
+            wine = .failed(reason)
         case .finished:
             break
         }

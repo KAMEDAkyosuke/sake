@@ -3,10 +3,12 @@
 What the build has to do, and which parts of it are not negotiable.
 
 Everything here was learned in the d4-mac prototype between 2026-08 and 2026-09-17, on one
-machine (Apple silicon, macOS 27.0), unless a section says otherwise. **sake has built the
-prefix — the nine tools and libraries below — on 2026-09-19, and has not yet built Wine
-itself.** Treat the rest as the specification the Swift implementation has to satisfy, not
-as a report on sake's behaviour.
+machine (Apple silicon, macOS 27.0), unless a section says otherwise. **sake built the nine
+components below and then Wine itself on 2026-09-19** — configure, the soname rewrite, make
+and install, 4m40s for Wine on ten cores, 1.1 GB of engine. What it has not done is run what
+it built: that needs a prefix, and creating one is the next piece. Treat anything not marked
+as sake's own measurement as the specification the implementation has to satisfy rather than
+a report on its behaviour.
 
 ## Why CrossOver's sources and not upstream Wine
 
@@ -88,8 +90,14 @@ clang is *not* required; the Mach-O side builds with stock Apple clang.
   handles them anyway.
 - **`make install` overwrites D3DMetal.** It puts Wine's own `d3d11`/`d3d12`/`dxgi.dll` back,
   so installing D3DMetal has to happen *after* every `make install`, not once.
-- **Sonames must be absolute or `@loader_path`-relative, never leaf names.** See
-  `layout.md` — `DYLD_LIBRARY_PATH` does not reach Wine's child processes.
+- **Sonames must not be leaf names.** A leaf name resolves only through
+  `DYLD_LIBRARY_PATH`, and that does not reach Wine's child processes. sake rewrites the
+  four in `include/config.h` to `@loader_path`-relative paths between configure and make;
+  see `layout.md`.
+- **Nothing x86_64 may exec an xcode-select shim.** `/usr/bin/clang`, `/usr/bin/m4` and
+  their neighbours are universal shims that `dlopen` an arm64-only `libxcrun.dylib`, so
+  started x86_64 they die. This bit in three unrelated places before it was recognised as one
+  thing, and the three sections below are those three.
 
 ### The wrapping no longer works with the Command Line Tools alone
 
@@ -105,41 +113,76 @@ Xcode.
 
 What works with the Command Line Tools alone is to run the tools natively and name the
 target out loud: every `configure` gets `--host=x86_64-apple-darwin
---build=x86_64-apple-darwin` **and** `CC="clang -arch x86_64"`. Autoconf then believes it is
+--build=x86_64-apple-darwin` **and** `CC="clang -arch x86_64"` — absolute for Wine, for a
+reason two sections down. Autoconf then believes it is
 a native x86_64 build and runs its test programs, which Rosetta executes — which is what the
 wrapping used to buy.
 
 `CC` is not optional. With the triplet alone, gmp compiles x86_64 assembly and hands it to
 an arm64 assembler: `tmp-add_err1_n.s: error: invalid operand / pop %rbx`.
 
-Verified by building the nine tools and libraries this way on 2026-09-19: all nine landed as
-x86_64, and the two that produce executables run. **Wine's own configure is not verified this
-way** — the prototype passed it no triplet at all and leaned on the wrapping instead.
+Verified by building the seven libraries and then Wine itself this way on 2026-09-19. Wine's
+configure had never been run without the wrapping — the prototype passed it no triplet at all
+— and it wants `CXX` named as well as `CC`, CrossOver's tree having C++ in it.
 
-## Prefix creation
+Naming the compiler out loud raises two questions the wrapping answered implicitly, and the
+next two sections are those: which components should be x86_64 at all, and where the PE
+compiler goes on PATH.
 
-- **`WINEDLLOVERRIDES="mscoree,mshtml=d"` or `wineboot` hangs forever** on the Wine Mono
-  installer dialog, at 0% CPU inside `CFRunLoopRun` → `mach_msg`, and `syswow64` is never
-  populated. An empty `syswow64` means no 32-bit app will run — check it.
-- **Disable the crash dialog immediately after creating the prefix**
-  (`HKCU\Software\Wine\WineDbg` → `ShowCrashDialog` = `REG_DWORD 0`). Otherwise every crash
-  spawns `winedbg --auto`, which puts up a GUI dialog and holds the process until someone
-  clicks Close. It also resets `WINEDEBUG`. This cost one 300-second timeout in the
-  prototype — and in a GUI app, a dialog nobody can see is a hang with no explanation.
-- An existing game install can be brought in with `cp -c -R` (APFS `clonefile`). A ~92 GB
-  game cost ~0 bytes, and unlike a symlink, writes to the clone do not propagate back, so
-  the source install cannot be damaged.
+### Only what ends up inside Wine is x86_64
 
-## Shell-specific traps worth keeping
+Measured in sake on 2026-09-19. This corrects an earlier claim here that all nine landed as
+x86_64 and that "the two that produce executables run". They do run — just not inside a Wine
+build.
 
-The prototype was shell; sake will not be. These two still apply to anything that composes
-paths or runs `hdiutil`:
+`bison` and `pkgconf` are build tools. Wine neither links nor `dlopen`s what they produce,
+so nothing requires them to match Wine's architecture; the prototype had them x86_64 only
+because it wrapped the whole build in `arch -x86_64`.
 
-- **Keep `*` out of a glob stored in a variable.** Every path involved in mounting the Game
-  Porting Toolkit contains spaces, so an unquoted variable holding a glob word-splits into
-  "Evaluation", "environment", "for", … and silently matches nothing — which reads as "the
-  toolkit is not mounted" while it is sitting right there.
-- **Three tools lie on this platform.** `pgrep -cf` errors out in a way that reads as "not
-  running"; `ps eww` shows nothing for another process's environment, so it cannot confirm
-  whether a variable was inherited; and `ps -Ao <fmt> -p <pid>` silently ignores `-p` and
-  prints every process.
+x86_64 is worse than unnecessary for them, because **an x86_64 process cannot exec an
+xcode-select shim**. bison has `/usr/bin/m4` compiled into it, and that is a universal shim:
+called from x86_64 it starts x86_64, cannot `dlopen` the arm64-only `libxcrun.dylib`, and
+dies. make sees the broken pipe and stops with `Error 141` on `tools/widl/parser.tab.h` — an
+error naming neither m4 nor architecture.
+
+`M4=$(xcrun -f m4)` also clears it, since an x86_64 process *can* exec an arm64-only binary.
+Building the tool native clears the class rather than the instance, which is why sake does
+that instead.
+
+So: gmp, nettle, libtasn1, gnutls, freetype, SDL2 and MoltenVK are x86_64 because Wine loads
+them. bison and pkgconf are native.
+
+### The PE compiler leads the system, and `CC` is absolute
+
+Measured in sake on 2026-09-19. llvm-mingw ships a bare `clang` and `clang++` beside its
+`x86_64-w64-mingw32-*` ones, and the two halves of a Wine build disagree about which clang
+the name `clang` should mean.
+
+**winebuild wants llvm-mingw's.** It assembles every PE object with whatever plain `clang`
+PATH offers it — `find_binary( NULL, "clang" )` in `tools/winebuild/utils.c`, reached
+because nothing on the way in hands it a `--cc-cmd`. Put llvm-mingw behind `/usr/bin` and it
+finds Apple's instead; winebuild is x86_64 and `/usr/bin/clang` is a shim, so it dies the
+way bison's m4 does — 94,000 lines into the build, naming neither clang nor architecture:
+
+```
+winebuild: /usr/bin/clang failed with status 1
+winegcc: ./tools/winebuild/winebuild failed
+```
+
+**configure wants Apple's.** llvm-mingw's clang targets Windows, so with it in front the
+first link test fails before anything else is checked at all:
+
+```
+ld: warning: ignoring -lto_library '<llvm-mingw>/lib/libLTO.dylib', file does not exist
+ld: library 'System' not found
+```
+
+Both at once: llvm-mingw ahead of `/usr/bin`, and `CC`/`CXX` named by absolute path so that
+configure never resolves the bare name. That is the arrangement the prototype had without
+having to think about it — it named no `CC`, so configure went looking for `gcc`, a name
+llvm-mingw does not ship unprefixed.
+
+The collision is narrow, which is why the front of PATH is safe: only `clang`, `clang++`,
+`clangd` and `lldb` exist in both llvm-mingw's `bin` and `/usr/bin`, and nothing configure
+looks for by bare name — `cpp`, `ld`, `strip`, `flex`, `bison`, `pkg-config` — is in
+llvm-mingw at all.

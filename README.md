@@ -3,19 +3,20 @@
 Run Windows games on an Apple silicon Mac, by building CrossOver's Wine from CodeWeavers'
 published LGPL sources — with a GUI, so it does not take a terminal.
 
-## Status: it gets as far as the libraries Wine needs
+## Status: it builds Wine, and nothing has been run under it
 
-**Wine itself is not built yet, and no game runs.** What the app does today is answer
-whether this Mac can do the rest — Apple silicon, Rosetta 2, the Command Line Tools, Apple's
-Game Porting Toolkit, room on disk — then download the eleven sources, check them against
-known hashes, unpack them, and build the nine tools and libraries Wine is configured
-against. If you were looking for something that runs a game today, this is not it.
+**No game runs.** What the app does today is answer whether this Mac can do the rest — Apple
+silicon, Rosetta 2, the Command Line Tools, Apple's Game Porting Toolkit, room on disk —
+then download the eleven sources, check them against known hashes, unpack them, build the
+nine tools and libraries Wine is configured against, and build CrossOver's Wine itself.
+Between that and a game there is still D3DMetal, a prefix to run in, and a way to start a
+title. If you were looking for something that runs a game today, this is not it.
 
 What is here:
 
 | | |
 |---|---|
-| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher and the prefix build |
+| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build and the Wine build |
 | `Sources/sake/` | the SwiftUI app, kept thin |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
 | `scripts/build-app.sh` | builds `target/Sake.app` |
@@ -60,7 +61,8 @@ falls back to a macOS 26 SDK, printing what it did. Override with `SDKROOT` if n
 ## Documentation
 
 `docs/` is the real content of this repository at the moment. Every claim in it names where
-and when it was measured — all of it in the prototype, none of it in sake.
+and when it was measured. Most of it is still the prototype's; the sections sake has measured
+itself say so and carry their own date.
 
 | file | what it covers |
 |---|---|

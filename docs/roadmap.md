@@ -39,11 +39,14 @@ printing a non-zero exit status.
 Standing so far: the preflight checks — Apple silicon, Rosetta 2, the Command Line Tools,
 the Game Porting Toolkit, disk space — the two pieces the rest of the phase sits on (the
 on-disk layout as a value type, and a subprocess runner that streams output and can be
-cancelled), fetching the eleven sources against pinned hashes, and building the nine tools
-and libraries into the engine prefix. That last one ran end to end on 2026-09-19.
+cancelled), fetching the eleven sources against pinned hashes, building the nine tools and
+libraries into the engine prefix, and building Wine itself against them: configure, the
+`@loader_path` soname rewrite, make, install, and a check that what came out is CrossOver's
+tree and not upstream's. The whole chain ran end to end on 2026-09-19 and leaves a 1.1 GB
+engine.
 
-Left: Wine's own configure, make and install, rewriting the sonames it records, and the
-guided D3DMetal step.
+Left: the guided D3DMetal step. Nothing has been *run* under the Wine that comes out —
+running it needs a prefix, which is Phase 3.
 
 ### Phase 3 — bottles and titles
 
@@ -77,11 +80,10 @@ easier to read than it was interleaved with `configure` flags.
 
 ## Open questions
 
-- **`@loader_path`-relative sonames** would make a built engine movable, which the prototype
-  explicitly is not. Verified in isolation, never against a real Wine build. See
-  `layout.md`.
-- **Path length.** The intended engine location produces sonames ~92 characters long, in the
-  untested gap between a known-good 76 and a known-bad 146. Measure before committing to it.
+- **`@loader_path` sonames under a running Wine.** As of 2026-09-19 sake writes them, a real
+  build carries them, and an x86_64 dylib sitting where Wine's unix libraries sit resolves
+  all four — moved tree included. What is still unwatched is Wine itself loading one. See
+  `layout.md`. (Path length, which used to be the question below this, went away with them.)
 - **How much to generalise beyond one title.** The prototype hard-coded Diablo IV in several
   places (launch arguments, process identification, which directories to import). Phase 3
   has to decide what a title profile actually contains, and one data point is thin.

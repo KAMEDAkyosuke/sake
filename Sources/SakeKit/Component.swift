@@ -180,3 +180,12 @@ extension Component {
         ),
     ]
 }
+
+extension Component {
+    /// CrossOver's source drop: the tree Wine itself is built from.
+    public static var crossover: Component { named("crossover") }
+
+    /// The PE compiler, which Wine's configure finds under its `x86_64-w64-mingw32-gcc`
+    /// name -- a symlink to a clang wrapper, so mingw-w64's own GCC is never needed.
+    public static var llvmMinGW: Component { named("llvm-mingw") }
+}

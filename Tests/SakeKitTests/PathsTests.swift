@@ -15,7 +15,25 @@ import Testing
     #expect(paths.sources.path == "/tmp/cache/sources")
     #expect(paths.toolchain.path == "/tmp/cache/toolchain")
     #expect(paths.build.path == "/tmp/cache/build")
+    #expect(paths.wineBuild.path == "/tmp/cache/build/wine")
+    #expect(paths.wineUnixLibraries.path == "/tmp/support/engine/lib/wine/x86_64-unix")
     #expect(paths.d3dMetalFramework.path == "/tmp/support/engine/lib/external/D3DMetal.framework")
+}
+
+@Test func aLoaderPathSonameReachesTheEngineLibraries() {
+    let paths = Paths(
+        root: URL(filePath: "/tmp/support"),
+        cache: URL(filePath: "/tmp/cache")
+    )
+
+    // Wine dlopens the engine's dylibs from its unix libraries and nowhere else, so this is
+    // the one relationship a rewritten soname depends on. Move either end without the other
+    // and Wine asks dyld for a path that is not there. See docs/layout.md.
+    let resolved = paths.wineUnixLibraries
+        .appending(path: WineBuilder.engineLibrariesFromWineUnix)
+        .standardizedFileURL
+
+    #expect(resolved.path == paths.engine.appending(path: "lib").path)
 }
 
 @Test func theDefaultRootsAreOutsideTheAppBundleAndFreeOfSpaces() {
