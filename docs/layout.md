@@ -12,7 +12,8 @@ those were measured in sake.
 /Applications/Sake.app                       the app, and nothing else
 ~/Library/Sake/
     engine/                                  Wine, its libraries and D3DMetal, 1.1 GB
-    bottles/                                 prefixes and the games in them, tens of GB
+    bottles/                                 prefixes and the games in them; empty is
+                                             1 GB, and a cloned game adds nothing
 ~/Library/Caches/Sake/
     dl/ sources/ toolchain/ build/           downloads and build intermediates, ~4 GB
     d3dmetal/                                Apple's redist/lib, kept so that the image
@@ -21,6 +22,50 @@ those were measured in sake.
 
 Uninstalling is an explicit action in the app, not a side effect of dragging the bundle to
 the Trash.
+
+## Importing a game costs nothing
+
+A bottle with Diablo IV in it is 100 GB, and the same game is already in a CrossOver bottle
+on the same disk. Copying it is not an option on a machine with 43 GB free — but on APFS it
+does not have to be a copy.
+
+Measured in sake on 2026-09-19, by copying a 2 GB tree three ways and reading the volume's
+free space either side:
+
+| | consumed |
+|---|---|
+| `/bin/cp -c -R` | ~0 |
+| `FileManager.copyItem` | 0 |
+| `copyfile(3)` with `COPYFILE_CLONE` | 0 |
+
+So **`copyItem` clones by itself**, and the prototype's `cp -c` needs no subprocess to
+reproduce. Writing to a clone does not reach the source — checked by changing a cloned file
+and hashing the original — so nothing sake does to its own bottle can damage the working
+CrossOver install.
+
+**A clone cannot cross a volume, and `copyItem` does not say so**; it quietly copies
+instead. sake compares `st_dev` on both sides and refuses rather than spending 100 GB nobody
+asked for. `/` and the data volume share one `st_dev` either side of the firmlink, so that
+pair is not what this catches; an external disk, a mounted image or a network share is.
+
+**What comes across is decided by difference, not by a list of titles.** A fresh prefix
+already has Wine's own `Common Files`, `Internet Explorer`, `Windows Media Player`,
+`Windows NT` and `Microsoft`, so whatever a source bottle holds on top of those in
+`Program Files`, `Program Files (x86)` and `ProgramData` is what the user installed. Against
+the CrossOver bottle on this machine that comes out as exactly Battle.net, Diablo IV and
+four smaller Blizzard directories, with no title named anywhere in the code.
+
+Two things constrain it:
+
+- **The clone has to land at the same relative path.** `ProgramData/Battle.net/Agent/product.db`
+  records the install as `C:/Program Files (x86)/Diablo IV`, so the client recognises the
+  game only if it is there. (Prototype, 2026-09-17.)
+- **`drive_c/windows` is never touched** — that is CrossOver's own Wine; see `licensing.md`.
+  `drive_c/users` is left alone as well, on weaker grounds: the prototype never carried a
+  user profile across and Battle.net rebuilt its own.
+
+The first real import, on 2026-09-19: six entries, **100.31 GB in 0.4 seconds**, free space
+unchanged to within noise, and the source's 2,537 files hashing the same afterwards.
 
 ## Why not Application Support
 

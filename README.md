@@ -3,22 +3,23 @@
 Run Windows games on an Apple silicon Mac, by building CrossOver's Wine from CodeWeavers'
 published LGPL sources — with a GUI, so it does not take a terminal.
 
-## Status: it builds an engine and starts it, and no game runs yet
+## Status: there is a bottle with a game in it, and no way to start it
 
 **No game runs.** What the app does today is answer whether this Mac can do the rest — Apple
 silicon, Rosetta 2, the Command Line Tools, Apple's Game Porting Toolkit, room on disk —
 then download the eleven sources, check them against known hashes, unpack them, build the
 tools and libraries Wine is configured against, build CrossOver's Wine itself, guide Apple's
-D3DMetal in from an image you mounted, and make a bottle with the result. That last step is
-where the 1.1 GB engine first runs: Wine comes up, WoW64 initialises, and the libraries that
-were built for it load. There is still no game in the bottle and no way to start one. If you
-were looking for something that runs a game today, this is not it.
+D3DMetal in from an image you mounted, make a bottle with the result, and clone a game you
+already installed under CrossOver into it. Making the bottle is where the 1.1 GB engine
+first runs: Wine comes up, WoW64 initialises, and the libraries built for it load. What is
+missing is the part that starts the game. If you were looking for something that plays
+today, this is not it.
 
 What is here:
 
 | | |
 |---|---|
-| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the D3DMetal step and the bottle |
+| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the D3DMetal step, the bottle and the import |
 | `Sources/sake/` | the SwiftUI app, kept thin |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
 | `scripts/build-app.sh` | builds `target/Sake.app` |
@@ -72,7 +73,7 @@ itself say so and carry their own date.
 | `docs/wine-build.md` | building Wine from CrossOver's sources; the flags that cannot be dropped |
 | `docs/runtime.md` | creating a prefix, the three settings that make games run, the Play-button root cause, controllers, and how to tell four failure states apart |
 | `docs/licensing.md` | what may and may not be redistributed, and why D3DMetal is unavoidable |
-| `docs/layout.md` | where files go, why nothing mutable lives in the app bundle, and what pins a built tree to its path |
+| `docs/layout.md` | where files go, why importing a 100 GB game costs nothing, why nothing mutable lives in the app bundle, and what pins a built tree to its path |
 
 ## Requirements (for what sake will do, once it does it)
 

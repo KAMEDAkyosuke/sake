@@ -59,6 +59,22 @@ licence. sake does not distribute it, does not put it on a network, and deletes 
 cache. The three things sake must never do are unchanged: it does not ship D3DMetal, does not
 download it on the user's behalf, and does not take it out of an installed CrossOver.
 
+## Importing out of a CrossOver bottle
+
+sake can clone a game the user already installed under CrossOver into one of its own
+bottles. That is a different act from the one forbidden above, and the line is worth stating
+because the two look alike.
+
+What moves is the user's own software: the game and its data, installed under its own
+licence, staying on the machine it was installed on. sake copies it locally, distributes
+nothing, and only ever reads the source.
+
+What does not move is **anything in `drive_c/windows`**. That is CrossOver's Wine — their
+build, their licence, and in a bottle with D3DMetal in it, exactly the copy the section
+above says sake must never take. The import looks at `Program Files`, `Program Files (x86)`
+and `ProgramData` and at nothing else, so it is kept away from that directory by
+construction rather than by a filter someone could later relax.
+
 ## Wine and the patches
 
 Wine is LGPL, which is why CodeWeavers publish CrossOver's sources at all, and why this whole

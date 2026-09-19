@@ -22,6 +22,13 @@ struct SetupView: View {
     @State private var bottleBlockedBy: String?
     @State private var bottleCreate: Task<Void, Never>?
     @State private var bottleGeneration = 0
+    @State private var importSources: [CrossOverBottle] = []
+    @State private var importSource: CrossOverBottle?
+    @State private var importCandidates: [String] = []
+    @State private var importStatus: ImportStatus?
+    @State private var importBlockedBy: String?
+    @State private var importRun: Task<Void, Never>?
+    @State private var importGeneration = 0
 
     var body: some View {
         ScrollView {
@@ -80,6 +87,19 @@ struct SetupView: View {
                     start: startBottle,
                     stop: stopBottle
                 )
+
+                Divider()
+
+                ImportView(
+                    sources: importSources,
+                    selection: $importSource,
+                    candidates: importCandidates,
+                    status: importStatus,
+                    blockedBy: importBlockedBy,
+                    isImporting: importRun != nil,
+                    start: startImport,
+                    stop: stopImport
+                )
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -134,6 +154,19 @@ struct SetupView: View {
         bottleBlockedBy = machineIsReady
             ? bottles.missingPrerequisite
             : "This Mac is not ready yet."
+
+        importSources = CrossOverBottle.available()
+        if importSource == nil || !importSources.contains(where: { $0 == importSource }) {
+            importSource = importSources.first
+        }
+        if let source = importSource {
+            let importer = BottleImporter(paths: paths, source: source)
+            importCandidates = importer.candidates()
+            importBlockedBy = importer.missingPrerequisite
+        } else {
+            importCandidates = []
+            importBlockedBy = "No CrossOver bottle to import from."
+        }
     }
 
     private func startFetching() {
@@ -347,6 +380,47 @@ struct SetupView: View {
             bottle = .failed(reason)
         case .finished:
             break
+        }
+    }
+
+    private func startImport() {
+        guard importRun == nil, let source = importSource else { return }
+        importGeneration += 1
+        let generation = importGeneration
+        importRun = Task {
+            for await event in BottleImporter(source: source).run() {
+                apply(event)
+            }
+            if generation == importGeneration {
+                importRun = nil
+                survey()
+            }
+        }
+    }
+
+    private func stopImport() {
+        importGeneration += 1
+        importRun?.cancel()
+        importRun = nil
+    }
+
+    private func apply(_ event: ImportEvent) {
+        switch event {
+        case .nothingToImport:
+            importStatus = .nothingToImport
+        case .started:
+            importStatus = .working(entry: "")
+        case .cloning(let entry):
+            importStatus = .working(entry: entry)
+        case .cloned:
+            break
+        case .failed(let reason, _):
+            importStatus = .failed(reason)
+        case .finished(let cloned, let bytes):
+            // A run that failed has already said so, and its count would read as success.
+            if case .failed = importStatus {} else if cloned > 0 {
+                importStatus = .imported(count: cloned, bytes: bytes)
+            }
         }
     }
 }

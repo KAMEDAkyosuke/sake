@@ -55,8 +55,13 @@ belongs in a declarative form the GUI can read and edit — not in code.
 **Creating a prefix is done, as of 2026-09-19**, and it is the first thing here that runs
 what the earlier phases built: wineboot, the wait, the checks that WoW64 came up and that
 Wine found the engine's own libraries, and the crash dialog turned off before anything can
-put one up. `runtime.md` has what that measured. Still to come: importing the games out of
-a CrossOver bottle, the two patches, and what a title profile actually contains.
+put one up. `runtime.md` has what that measured.
+
+**Importing is done too, the same day.** A game already installed under CrossOver is cloned
+in rather than copied, which costs no disk at all, and what comes across is decided by
+difference against a fresh prefix — so no title is named in the code. `layout.md` has the
+measurement and `licensing.md` the line it stays inside. Still to come: the two patches, and
+what a title profile actually contains.
 
 ### Phase 4 — the GUI proper
 
@@ -90,8 +95,10 @@ easier to read than it was interleaved with `configure` flags.
   to be the whole question of whether Wine could load any of them, and path length before
   that. Both went away.)
 - **How much to generalise beyond one title.** The prototype hard-coded Diablo IV in several
-  places (launch arguments, process identification, which directories to import). Phase 3
-  has to decide what a title profile actually contains, and one data point is thin.
+  places (launch arguments, process identification, which directories to import). One of
+  those went away on 2026-09-19 — which directories to import is a difference, not a list —
+  but launch arguments and process identification are still per-title, and one data point
+  is thin.
 - **Where the CrossOver version lives.** It is a knob users may need — a newer CrossOver may
   fix or break a given game — but exposing it invites them to pick a combination nobody has
   run.
