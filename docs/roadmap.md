@@ -70,8 +70,9 @@ value, not code.
 **The two patches landed the same day, and with them a game runs.** Diablo IV starts behind
 a live parent process and reaches 92 threads, 1982 MB and 103 Metal/AGX mappings, where the
 unpatched build stalls flat at 12. `runtime.md` has both measurements and what they are
-against; `licensing.md` has why `patches/` is not MIT. What is still unpressed is the Play
-button itself — the probe reproduces the check that button trips over, not the button.
+against; `licensing.md` has why `patches/` is not MIT. The Play button itself was pressed on
+2026-09-20 and the game was played; the probe reproduced the check it trips over, and then
+the button turned out to agree.
 
 **A game can be put in without CrossOver, as of 2026-09-20.** An installer the user
 supplies runs in a chosen bottle, and anything already in a bottle can be added to the
@@ -82,8 +83,10 @@ measured them to be. `licensing.md` has why sake runs an installer but never fet
 this was built for rather than by the machine that wrote it. `Battle.net-Setup.exe` is
 `PE32 … Intel 80386` — a 32-bit installer, which until then was only inferred to work
 from a populated `syswow64` — and it installed a client that is PE32 too. The run left a
-57 KB log under `build/`. What it does not say is whether that client plays anything: the
-Play button in it is still the thing nobody has pressed.
+57 KB log under `build/`. Later the same day that client signed in, Play was pressed in it,
+and Diablo IV was playable with a keyboard and mouse — **the whole of it, from a Mac with
+no CrossOver on it to a game somebody played.** What nobody has written down yet is a second
+machine, a second game, or a controller run of sake's own.
 
 **sake ships no titles of its own, as of 2026-09-20.** It knew Battle.net once — an
 executable path, its flags, and a row that appeared when that path existed. What the row
@@ -115,14 +118,18 @@ The library is a list with a detail pane rather than a row per game, for two rea
 keeping: a row per game means a Play button per game, and the detail pane is where per-title
 settings go when they arrive. Importing is a sheet on that window rather than a window of
 its own because it finishes in under a second. It used to be justified by belonging to one
-bottle as well; it now chooses which one, so that half of the reason has gone. The setup
+bottle as well; that half came back on 2026-09-20, when the picker inside it went and the
+way in became the bottle's own screen. The setup
 wizard is a window instead precisely because it does not finish quickly: it runs for tens of
 minutes and sends the user to a browser part way through.
 
 **More than one bottle followed on 2026-09-19.** The library is a section per bottle, and a
 bottle is selectable in its own right rather than only through the games in it — a bottle
 just made has nothing in it, so a heading alone would be a dead end. What the detail pane for
-one offers is the import, which is the only thing an empty bottle can do.
+one offers is how a game gets in: the import, the game's own installer, and adding
+something already there as a title. Those are per-bottle actions and they live on the
+bottle, which is where they moved on 2026-09-20 — the sidebar's menu keeps only what is
+about the library rather than about one bottle in it.
 
 Nothing in `SakeKit` had to change to allow it: `BottleBuilder`, `BottleImporter` and
 `TitleLauncher` all already took a name. What was missing was a way to enumerate what is on

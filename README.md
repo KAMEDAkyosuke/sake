@@ -3,54 +3,97 @@
 Run Windows games on an Apple silicon Mac, by building CrossOver's Wine from CodeWeavers'
 published LGPL sources — with a GUI, so it does not take a terminal.
 
-## Status: a game starts. Nobody has played one yet.
+## Status: you can play
 
-What the app does today is answer whether this Mac can do the rest — Apple silicon,
-Rosetta 2, the Command Line Tools, Apple's Game Porting Toolkit, room on disk — then
-download the eleven sources, check them against known hashes, unpack them, build the tools
-and libraries Wine is configured against, build CrossOver's Wine itself, guide Apple's
-D3DMetal in from an image you mounted, make a bottle with the result, put a game in it —
-either by cloning one you already installed under CrossOver or by running the game's own
-installer, which you supply — and start it.
+Diablo IV ran on 2026-09-20, in a bottle sake made that afternoon: the Battle.net client
+installed by its own installer inside that bottle, signed in, Play pressed in the client,
+and the game playable with the keyboard and mouse. **No CrossOver was involved at any
+point** — that route exists, and this was not it.
 
-The Battle.net client comes up, reaches Blizzard and loads its login page. Diablo IV starts
-as well: launched behind a live parent process — the shape the client's Agent creates, and
-the one that used to stall forever — it reaches 92 threads and 103 Metal/AGX mappings, which
-is what the two patches in `patches/` are for.
+One person, one game, one Mac (Apple silicon, macOS 27.0), one afternoon. Everything in this
+repository that claims to have been measured says where and when; nothing here has been run
+on a second machine.
 
-What nobody has done is press Play in the client and play. The evidence here is process
-state rather than a screen, and the client only hands out a login token after that press. If
-you were looking for something you can play today, this is not it yet.
+## What it does
 
-There are two windows: a library — a section per bottle, with whatever can be started in
-each — and a setup wizard that walks the six steps above one at a time. The wizard opens
-itself when setup is not finished. Anything already in a bottle can be added to the library
-by hand, so a game sake knows nothing about can still be started. A bottle can be renamed or
-thrown away from the library, and the app menu has an Uninstall that takes away everything
-sake made; all of it goes to the Trash, so it can be put back.
+The app answers whether this Mac can do the rest — Apple silicon, Rosetta 2, the Command
+Line Tools, Apple's Game Porting Toolkit, room on disk — then walks six steps, one screen
+at a time:
 
-What is here:
+1. download the eleven sources and check them against known hashes
+2. unpack them and build the tools and libraries Wine is configured against
+3. build CrossOver's Wine itself, with the two patches in `patches/`
+4. guide Apple's D3DMetal in from an image you mounted, and unmount it again
+5. make a bottle — one Wine prefix, which is where a game lives
+6. put a game in it
 
-| | |
-|---|---|
-| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the patch step, the D3DMetal step, the bottle, the import, starting a title, how big a tree is, and the uninstall |
-| `Sources/sake/` | the SwiftUI app — two windows, kept thin |
-| `patches/` | the two changes sake makes to Wine's own code — LGPL-2.1-or-later, not MIT |
-| `docs/` | how the thing actually has to work, and what breaks when it doesn't |
-| `assets/` | the app icon, and the code that draws it |
-| `scripts/build-app.sh` | builds `target/Sake.app` |
-| `scripts/make-icon.sh` | redraws `assets/Sake.icns` |
-| `scripts/test.sh` | runs the tests |
+There are two ways in for step 6, and neither needs anything sake is not allowed to give
+you: run the game's own installer, which you downloaded, inside the bottle; or clone a game
+you already installed under CrossOver, which costs no disk space because it is an APFS
+clone.
 
-## The goal
+After that the library is where you live. A bottle holds titles you added; a title is a
+program in that bottle, its name, and the arguments it starts with. Picking a program that
+carries `libcef.dll` fills those arguments in with what a Chromium client needs, because
+that is the one thing this stack is known to require and easy to forget. A title's name and
+arguments can be changed afterwards, a bottle can be renamed or thrown away, and the app
+menu has an Uninstall that takes away everything sake made. All of it goes to the Trash, so
+it can be put back.
 
-Someone who has never opened a terminal installs sake, follows the app, and ends up playing.
-Every setting in the GUI, progress shown for every long operation, and failures that say
-what to do next rather than printing an exit status.
+## Requirements
 
-The approach was already proven by a prototype — a pile of shell scripts that got Diablo IV
-playable on 2026-09-17 — which worked only for someone willing to read shell. sake is the
-part that was missing. See `docs/roadmap.md`.
+- Apple silicon with Rosetta 2
+- macOS 15 or newer
+- The Xcode Command Line Tools
+- Apple's Game Porting Toolkit dmg — a free Apple ID is enough
+- ~10 GB for sources and build output, plus whatever the game needs
+
+Nothing is installed into `/usr/local`, `/opt/local` or `/nix`. sake keeps the engine and
+the bottles under `~/Library/Sake`, and its build output under `~/Library/Caches/Sake`.
+
+## Getting it
+
+There is no download yet. Build it:
+
+```sh
+git clone https://github.com/typester/sake.git
+cd sake
+./scripts/build-app.sh --release
+```
+
+That leaves `target/Sake.app`, which you can drag to `/Applications`. The bundle is ad-hoc
+signed and not notarised, so a copy that arrives from the internet will be stopped by
+Gatekeeper — **not measured here**, but it is what an ad-hoc signature means. Building it
+yourself is the path this repository has actually taken.
+
+## Using it
+
+Open the app. The setup wizard comes up when the six steps are not finished and stays out of
+the way when they are. It runs for tens of minutes, mostly compiling, and sends you to
+Apple's download page once, for the toolkit.
+
+When it is done, the library has a bottle in it. Select the bottle and you get the two ways
+to put a game in, plus Rename and Delete. Once the game is installed, **Add a Title…** is
+what puts it in the library: pick its `.exe` inside the bottle, keep or change the arguments
+that were filled in, and it appears with a Play button.
+
+For a launcher like Battle.net, start the launcher and press Play inside it. sake
+deliberately does not offer a button that starts Diablo IV directly: the client only hands
+out a login token after that press, so a direct start reaches the game and then fails on the
+token. `docs/runtime.md` has the measurements behind that.
+
+## What has not been checked
+
+- **One game, one Mac, one afternoon.** Nothing here has run on a second machine, a second
+  macOS version, or a second game.
+- **Controllers, sound and frame rate.** The prototype this grew out of played with a Switch
+  Pro Controller over USB on 2026-09-17, and needed SDL2 for it; sake has not written down a
+  controller run of its own. Sound and performance are not measured anywhere in here.
+- **A download.** Nobody has fetched a zip of this and opened it on another Mac, so what
+  Gatekeeper does with one is unverified.
+- **Anything in `docs/` marked as the prototype's.** Much of what is written down was
+  measured in a pile of shell scripts before sake existed; those sections say so and carry
+  their own dates.
 
 ## Why build Wine at all
 
@@ -59,13 +102,27 @@ glue it plugs into lives in `dlls/winemac.drv/d3dmetal.c`. That glue is LGPL, so
 publish it, and that is what makes "build the same Wine yourself" a real option rather than
 wishful thinking. Upstream Wine does not have it.
 
-**D3DMetal itself is not redistributable**, so sake will never ship it or fetch it for you —
-it guides you through downloading Apple's Game Porting Toolkit yourself. See
-`docs/licensing.md`.
+**D3DMetal itself is not redistributable**, so sake will never ship it, download it for you,
+or take it out of an installed CrossOver — it guides you through downloading Apple's Game
+Porting Toolkit yourself, mounts the image inside it, copies out the part it needs, and
+unmounts it again. See `docs/licensing.md`.
+
+## What is here
+
+| | |
+|---|---|
+| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the patch step, the D3DMetal step, the bottle, the import, the installer, the titles, starting one, how big a tree is, and the uninstall |
+| `Sources/sake/` | the SwiftUI app — two windows, kept thin |
+| `patches/` | the two changes sake makes to Wine's own code — LGPL-2.1-or-later, not MIT |
+| `docs/` | how the thing actually has to work, and what breaks when it doesn't |
+| `assets/` | the app icon, and the code that draws it |
+| `scripts/build-app.sh` | builds `target/Sake.app` |
+| `scripts/make-icon.sh` | redraws `assets/Sake.icns` |
+| `scripts/test.sh` | runs the tests |
 
 ## Building
 
-Requires the Xcode Command Line Tools. Xcode is not needed.
+Requires the Xcode Command Line Tools. Xcode is not needed, and there is no Xcode project.
 
 ```sh
 ./scripts/build-app.sh            # target/Sake.app
@@ -80,26 +137,17 @@ falls back to a macOS 26 SDK, printing what it did. Override with `SDKROOT` if n
 
 ## Documentation
 
-`docs/` is the real content of this repository at the moment. Every claim in it names where
-and when it was measured. Most of it is still the prototype's; the sections sake has measured
-itself say so and carry their own date.
+`docs/` is the real content of this repository. Every claim in it names where and when it was
+measured. Much of it is still the prototype's; the sections sake has measured itself say so
+and carry their own date.
 
 | file | what it covers |
 |---|---|
 | `docs/roadmap.md` | the goal, the phases, and where Swift stops and subprocesses start |
 | `docs/wine-build.md` | building Wine from CrossOver's sources; the flags that cannot be dropped |
-| `docs/runtime.md` | creating a prefix, the three settings that make games run, the Play-button root cause, controllers, and how to tell four failure states apart |
+| `docs/runtime.md` | creating a prefix, the three settings that make games run, what pressing Play actually does, controllers, taking a bottle down, and how to tell four failure states apart |
 | `docs/licensing.md` | what may and may not be redistributed, and why D3DMetal is unavoidable |
 | `docs/layout.md` | where files go, why importing a 100 GB game costs nothing and removing it returns nothing either, why nothing mutable lives in the app bundle, and what pins a built tree to its path |
-
-## Requirements (for what sake will do, once it does it)
-
-- Apple silicon with Rosetta 2
-- macOS 15 or newer
-- Apple's Game Porting Toolkit dmg — a free Apple ID is enough
-- ~10 GB for sources and build output, plus whatever the game needs
-
-Nothing is installed into `/usr/local`, `/opt/local` or `/nix`.
 
 ## Licence
 
