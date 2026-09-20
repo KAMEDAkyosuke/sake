@@ -21,7 +21,25 @@ those were measured in sake.
 ```
 
 Uninstalling is an explicit action in the app, not a side effect of dragging the bundle to
-the Trash.
+the Trash. Those two directories are the whole of it, and both go to the Trash like a bottle
+does. **Sake.app is not one of them** — it is running at the time, and a bundle in
+`/Applications` is the user's to drag away; the sheet says so rather than leaving the user
+to wonder whether the app deleted itself.
+
+Run for real on 2026-09-19 against the tree described above, and put back afterwards:
+
+| | |
+|---|---|
+| both roots into the Trash | under 5 seconds |
+| free space | 41,201,800 KB before, 41,200,948 KB after — a rename returns nothing |
+| what landed | `~/.Trash/Sake` and `~/.Trash/Sake 23-17-59-246` |
+| inodes | 140230090 and 140198136, the same either side of the move and the same again after restoring |
+
+**Both roots are called `Sake`, so the Trash renames the second one after the time.** Nothing
+about `Sake 23-17-59-246` says which of the two it was, which is why the app reports where
+each one landed instead of leaving the user to guess. Moving the two back by hand restored
+the tree exactly — same inodes, same sizes, and Battle.net started from it four seconds
+later.
 
 ## A bottle's name is a directory name
 

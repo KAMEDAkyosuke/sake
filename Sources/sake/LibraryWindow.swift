@@ -57,6 +57,7 @@ struct LibraryWindow: View {
         .frame(minWidth: 620, minHeight: 380)
         .sheet(isPresented: $model.isImporting) { ImportSheet().environment(model) }
         .sheet(isPresented: $model.isCreatingBottle) { NewBottleSheet().environment(model) }
+        .sheet(isPresented: $model.isUninstalling) { UninstallSheet().environment(model) }
         .sheet(isPresented: $model.isRenamingBottle) {
             if let selected { RenameBottleSheet(bottle: selected).environment(model) }
         }

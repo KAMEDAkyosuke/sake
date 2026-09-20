@@ -83,6 +83,14 @@ final class AppModel {
     /// than one; until then it follows whatever the library has selected.
     var importTarget = Bottle.defaultName
 
+    var isUninstalling = false
+    var uninstallItems: [Uninstaller.Item] = []
+    var uninstallSizes: [String: Int64] = [:]
+    /// Where each root landed in the Trash, which is what somebody who changes their mind
+    /// needs to know.
+    var uninstallLanded: [URL] = []
+    var uninstallStatus: UninstallStatus?
+
     var bottles: [Bottle] = []
     var titles: [String: [Title]] = [:]
     var selection: LibrarySelection?
@@ -99,6 +107,7 @@ final class AppModel {
     let changingBottle = Run()
     let importing = Run()
     let playing = Run()
+    let uninstalling = Run()
 
     var machineIsReady: Bool {
         !requirements.isEmpty && requirements.allSatisfy(\.status.isSatisfied)
@@ -474,6 +483,60 @@ final class AppModel {
             if case .failed = importStatus {} else if cloned > 0 {
                 importStatus = .imported(count: cloned, bytes: bytes)
             }
+        }
+    }
+
+    /// What uninstalling would take away, and what each piece occupies. The list is a
+    /// directory listing; the sizes walk the trees, so they arrive afterwards -- the same
+    /// split the import sheet makes.
+    func loadUninstallOffer() {
+        uninstallItems = Uninstaller(paths: paths).items()
+        uninstallSizes = [:]
+        let items = uninstallItems
+        Task {
+            for item in items {
+                uninstallSizes[item.id] = await Task.detached { DiskUsage.size(of: item.url) }.value
+            }
+        }
+    }
+
+    func uninstall() {
+        uninstallLanded = []
+        uninstallStatus = .working("starting")
+        uninstalling.start({
+            for await e in Uninstaller(paths: self.paths).run() { self.apply(e) }
+        }) {
+            self.forgetWhatWasOnDisk()
+            self.survey()
+            self.loadUninstallOffer()
+        }
+    }
+
+    /// Everything the model remembers about the disk. ``survey()`` only ever fills these in
+    /// -- it has never had to notice something going away -- so an uninstall has to empty
+    /// them itself or the wizard goes on reporting steps that are done.
+    private func forgetWhatWasOnDisk() {
+        sources = [:]
+        prefix = [:]
+        wine = nil
+        d3dMetal = nil
+        bottleStatus = [:]
+        bottleSizes = [:]
+        titleStatus = [:]
+        runningTitle = nil
+        selection = nil
+    }
+
+    private func apply(_ event: UninstallEvent) {
+        switch event {
+        case .started: uninstallStatus = .working("starting")
+        case .stopping(let bottle): uninstallStatus = .working("stopping \(bottle)")
+        case .removing(let path): uninstallStatus = .working("moving \(path)")
+        case .removed(_, let landed): if let landed { uninstallLanded.append(landed) }
+        case .failed(let reason): uninstallStatus = .failed(reason)
+        case .finished(let removed):
+            // A run that failed has already said so, and a count would read as success.
+            if case .failed = uninstallStatus {} else { uninstallStatus = .done(count: removed) }
         }
     }
 

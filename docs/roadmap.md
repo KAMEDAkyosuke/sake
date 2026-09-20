@@ -128,7 +128,18 @@ goes ahead. The guard is only as good as what sake started itself, because nothi
 says which prefix a Wine process belongs to; `Bottle` taking the prefix down regardless is
 what keeps the rest safe rather than merely quiet.
 
-Still to come: adding and editing titles, and uninstall.
+**Uninstall landed on 2026-09-19 and was run here for real.** It is in the app menu rather
+than in either window, because it is about the app and not about what is on screen. It takes
+the two directories `layout.md` names and nothing else, and it takes them to the Trash — the
+same choice bottles made, and the reason the real run could be undone afterwards rather than
+costing a rebuild.
+
+What it deliberately does not do is delete Sake.app. `licensing.md`'s one standing promise
+about the user's copy of D3DMetal — that it does not outlive the cache — is now a test rather
+than a sentence.
+
+Still to come: adding and editing titles, and taking the build cache away on its own, which
+is what somebody who wants their 4 GB back but not to lose their games is asking for.
 
 ## The Swift/subprocess boundary
 

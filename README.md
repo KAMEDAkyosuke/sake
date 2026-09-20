@@ -23,8 +23,9 @@ you were looking for something you can play today, this is not it yet.
 
 There are two windows: a library — a section per bottle, with whatever can be started in
 each — and a setup wizard that walks the six steps above one at a time. The wizard opens
-itself when setup is not finished. A bottle can be renamed or thrown away from the library;
-throwing one away moves it to the Trash, so it can be put back.
+itself when setup is not finished. A bottle can be renamed or thrown away from the library,
+and the app menu has an Uninstall that takes away everything sake made; all of it goes to the
+Trash, so it can be put back.
 
 What is here:
 

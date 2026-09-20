@@ -18,6 +18,7 @@ struct SakeApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 560, height: 420)
+        .commands { UninstallCommand(model: model) }
 
         // Not a UtilityWindow either, although docs/layout.md once expected the setup flow
         // to use one: a utility window has `hidesOnDeactivate`, and the D3DMetal step's
@@ -27,5 +28,24 @@ struct SakeApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 760, height: 560)
+    }
+}
+
+/// Uninstalling is an explicit action in the app rather than something that follows from
+/// dragging the bundle away, so it has to live somewhere -- and the app menu is where a Mac
+/// app keeps the item that is about the app rather than about what is in the window. See
+/// docs/layout.md.
+struct UninstallCommand: Commands {
+    let model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Uninstall sake…") {
+                // The library can be closed, and a sheet needs a window to sit on.
+                openWindow(id: WindowID.library)
+                model.isUninstalling = true
+            }
+        }
     }
 }

@@ -56,7 +56,10 @@ miserable, so sake keeps its own copy of `redist/lib`.
 
 That copy is **the user's**, made on their machine from media they obtained under Apple's
 licence. sake does not distribute it, does not put it on a network, and deletes it with the
-cache. The three things sake must never do are unchanged: it does not ship D3DMetal, does not
+cache. That last one stopped being a promise on 2026-09-19: uninstalling takes
+`~/Library/Caches/Sake` away whole, and a test asserts both that `d3dmetal` is inside it and
+that it is gone afterwards, so the day somebody moves the cache copy elsewhere the test says
+so. The three things sake must never do are unchanged: it does not ship D3DMetal, does not
 download it on the user's behalf, and does not take it out of an installed CrossOver.
 
 ## Importing out of a CrossOver bottle
