@@ -134,10 +134,11 @@ struct LibraryWindow: View {
         switch model.selection {
         case .title(let bottle, _):
             if let title = model.selectedTitle {
+                let run = RunningTitle(bottle: bottle, title: title)
                 TitleDetail(
                     title: title,
-                    status: model.titleStatus,
-                    isRunning: model.runningTitle == RunningTitle(bottle: bottle, title: title),
+                    status: model.titleStatus[run],
+                    isRunning: model.runningTitle == run,
                     blockedBy: model.blocker(for: title, in: bottle),
                     play: { model.startTitle(title, in: bottle) },
                     stop: model.stopTitle

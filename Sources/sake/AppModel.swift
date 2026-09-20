@@ -36,7 +36,7 @@ final class Run {
 
 /// A title and the bottle it was started in, because stopping goes after a `WINEPREFIX`
 /// and the wrong one would take somebody else's game down.
-struct RunningTitle: Equatable {
+struct RunningTitle: Hashable {
     let bottle: String
     let title: Title
 }
@@ -87,7 +87,9 @@ final class AppModel {
     var titles: [String: [Title]] = [:]
     var selection: LibrarySelection?
     var runningTitle: RunningTitle?
-    var titleStatus: TitleStatus?
+    /// Keyed by the run it came out of and not by the title alone: the same game can be
+    /// installed in two bottles, so an id on its own names two different things.
+    var titleStatus: [RunningTitle: TitleStatus] = [:]
 
     let fetching = Run()
     let building = Run()
@@ -223,6 +225,7 @@ final class AppModel {
         }
 
         bottleSizes = bottleSizes.filter { name, _ in bottles.contains { $0.name == name } }
+        titleStatus = titleStatus.filter { key, _ in titles[key.bottle]?.contains(key.title) == true }
         measureSelectedBottle()
 
         importSources = CrossOverBottle.available()
@@ -290,6 +293,12 @@ final class AppModel {
                 let renamed = try await bottle.rename(to: typed)
                 self.bottleStatus[renamed.name] = self.bottleStatus.removeValue(forKey: bottle.name)
                 self.bottleSizes[renamed.name] = self.bottleSizes.removeValue(forKey: bottle.name)
+                self.titleStatus = self.titleStatus.reduce(into: [:]) { moved, entry in
+                    let key = entry.key.bottle == bottle.name
+                        ? RunningTitle(bottle: renamed.name, title: entry.key.title)
+                        : entry.key
+                    moved[key] = entry.value
+                }
                 self.selection = .bottle(renamed.name)
                 self.importTarget = renamed.name
             } catch {
@@ -448,11 +457,12 @@ final class AppModel {
     }
 
     func startTitle(_ title: Title, in bottle: String) {
-        runningTitle = RunningTitle(bottle: bottle, title: title)
-        titleStatus = .starting
+        let running = RunningTitle(bottle: bottle, title: title)
+        runningTitle = running
+        titleStatus[running] = .starting
         playing.start({
             let launcher = TitleLauncher(paths: self.paths, name: bottle, title: title)
-            for await e in launcher.launch() { self.apply(e) }
+            for await e in launcher.launch() { self.apply(e, for: running) }
         }) {
             self.runningTitle = nil
             self.survey()
@@ -469,18 +479,18 @@ final class AppModel {
                 paths: paths, name: running.bottle, title: running.title
             )
             let left = await launcher.stop()
-            titleStatus = .stopped(left: left.count)
+            titleStatus[running] = .stopped(left: left.count)
             runningTitle = nil
             survey()
         }
     }
 
-    private func apply(_ event: LaunchEvent) {
+    private func apply(_ event: LaunchEvent, for running: RunningTitle) {
         switch event {
-        case .started: titleStatus = .starting
-        case .output(let line): titleStatus = .running(line: line)
-        case .exited(let status): titleStatus = .exited(status: status)
-        case .failed(let reason, _): titleStatus = .failed(reason)
+        case .started: titleStatus[running] = .starting
+        case .output(let line): titleStatus[running] = .running(line: line)
+        case .exited(let status): titleStatus[running] = .exited(status: status)
+        case .failed(let reason, _): titleStatus[running] = .failed(reason)
         case .finished: break
         }
     }

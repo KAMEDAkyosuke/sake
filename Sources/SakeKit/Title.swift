@@ -5,7 +5,7 @@ import Foundation
 /// Every field here is something the prototype hard-coded in a shell script. Why each
 /// argument is needed is in docs/runtime.md and is not restated beside the value, because
 /// a comment next to data is the copy that goes stale.
-public struct Title: Sendable, Equatable, Codable, Identifiable {
+public struct Title: Sendable, Hashable, Codable, Identifiable {
     public let id: String
     public let name: String
     /// Relative to the bottle's `drive_c`.
