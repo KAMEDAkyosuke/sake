@@ -45,7 +45,7 @@ struct RenameBottleSheet: View {
     }
 
     private var problem: String? {
-        Bottle.problem(withName: model.typedRenameName, in: model.paths, renaming: bottle.name)
+        model.renameProblem(bottle, to: model.typedRenameName)
     }
 
     private var canRename: Bool {

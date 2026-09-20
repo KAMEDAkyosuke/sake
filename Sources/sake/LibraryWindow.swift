@@ -197,11 +197,13 @@ struct LibraryWindow: View {
         case 1: "\(games[0].name) goes with it."
         default: "\(games.map(\.name).formatted()) go with it."
         }
+        let stopping = model.running(in: bottle.name)
+            .map { " \($0.name) is running now and will be stopped." } ?? ""
         let size = model.bottleSizes[bottle.name]?.formatted(.byteCount(style: .file))
         return """
-            \(holds) You can put it back from the Trash — and emptying the Trash returns \
-            less than \(size ?? "its size"), because a game that came from CrossOver shares \
-            its blocks with CrossOver's own copy.
+            \(holds)\(stopping) You can put it back from the Trash — and emptying the Trash \
+            returns less than \(size ?? "its size"), because a game that came from CrossOver \
+            shares its blocks with CrossOver's own copy.
             """
     }
 }

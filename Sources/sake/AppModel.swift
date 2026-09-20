@@ -128,6 +128,27 @@ final class AppModel {
         return titles[bottle]?.first { $0.id == id }
     }
 
+    /// What sake started in this bottle and has not seen end.
+    ///
+    /// Only what sake started this session: nothing in `ps` says which prefix a Wine
+    /// process belongs to, so a game left from an earlier run is not here. ``Bottle`` taking
+    /// the prefix down itself is what keeps that case safe rather than merely quiet.
+    func running(in bottle: String) -> Title? {
+        runningTitle.flatMap { $0.bottle == bottle ? $0.title : nil }
+    }
+
+    /// Why this bottle cannot be renamed to `typed`, as a sentence, or `nil` when it can.
+    ///
+    /// Renaming stops the prefix, and nobody asked for that by changing a label — so it is
+    /// refused rather than warned about. Deleting stops it too and is not refused, because
+    /// stopping is part of what throwing a bottle away means.
+    func renameProblem(_ bottle: Bottle, to typed: String) -> String? {
+        if let running = running(in: bottle.name) {
+            return "\(running.name) is running in it. Stop it first."
+        }
+        return Bottle.problem(withName: typed, in: paths, renaming: bottle.name)
+    }
+
     /// Why Play is off for this title, as a sentence, or `nil` when it is on.
     func blocker(for title: Title, in bottle: String) -> String? {
         TitleLauncher(paths: paths, name: bottle, title: title).missingPrerequisite

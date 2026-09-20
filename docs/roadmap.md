@@ -120,6 +120,14 @@ whose game was imported returns almost none of its size even once the Trash is e
 because those blocks belong to the CrossOver install as well. `layout.md` has the figures,
 and the confirmation says so rather than quoting the size as a promise.
 
+**Taking the prefix down is why the two ask differently.** Renaming a bottle with a game
+running in it is refused; deleting one is not. Nobody changing a label asked for their game
+to stop, so a rename that did it anyway is a surprise with nothing gained — whereas throwing
+a bottle away already means stopping what is in it, so there the confirmation says so and
+goes ahead. The guard is only as good as what sake started itself, because nothing in `ps`
+says which prefix a Wine process belongs to; `Bottle` taking the prefix down regardless is
+what keeps the rest safe rather than merely quiet.
+
 Still to come: adding and editing titles, and uninstall.
 
 ## The Swift/subprocess boundary
