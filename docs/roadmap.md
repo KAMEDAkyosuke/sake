@@ -140,6 +140,10 @@ than a sentence.
 
 Still to come: adding and editing titles, and taking the build cache away on its own, which
 is what somebody who wants their 4 GB back but not to lose their games is asking for.
+Two rough edges found on the way: the delete confirmation names the game twice when one is
+running, and a bottle just created does not offer what could be imported into it until
+something else surveys — `create` sets `importTarget` after the survey that would have used
+it.
 
 ## The Swift/subprocess boundary
 
@@ -177,6 +181,19 @@ easier to read than it was interleaved with `configure` flags.
   those went away on 2026-09-19 — which directories to import is a difference, not a list —
   but launch arguments and process identification are still per-title, and one data point
   is thin.
+- **Nothing tells sake which prefix a running Wine process belongs to.** `ps` shows the
+  engine's path and the program's name and nothing about `WINEPREFIX`, which is why the
+  guard that refuses to rename a bottle with a game in it covers only what sake started
+  itself. The lead, noticed on 2026-09-19 and not followed: wineserver keeps its socket in
+  `/tmp/.wine-<uid>/server-<dev>-<inode>`, both halves in hex, and the `<dev>` half matches
+  this volume's. If the other half is the prefix directory's inode then that is the missing
+  answer, and it survives a rename because an inode does.
+- **`AppModel` has quietly become where decisions live, and the tests cannot reach it.**
+  Whether a bottle may be renamed, which run a title's status belongs to, and what to forget
+  after an uninstall are all judgements, and all in the app target — `scripts/test.sh` only
+  reaches `SakeKit`. `CLAUDE.md` says logic in a view stops being tested; this is the same
+  thing one layer down. Either these move behind types that do not know about SwiftUI, or
+  the app target gets tests of its own.
 - **Where the CrossOver version lives.** It is a knob users may need — a newer CrossOver may
   fix or break a given game — but exposing it invites them to pick a combination nobody has
   run.

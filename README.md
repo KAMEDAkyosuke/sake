@@ -31,7 +31,7 @@ What is here:
 
 | | |
 |---|---|
-| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the patch step, the D3DMetal step, the bottle, the import and starting a title |
+| `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the patch step, the D3DMetal step, the bottle, the import, starting a title, how big a tree is, and the uninstall |
 | `Sources/sake/` | the SwiftUI app — two windows, kept thin |
 | `patches/` | the two changes sake makes to Wine's own code — LGPL-2.1-or-later, not MIT |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |

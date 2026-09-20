@@ -53,9 +53,10 @@ Three names are refused, and one that looks like it should be is not:
 
 - **Empty, containing `/`, or starting with `.`** — one folder's name, not a path, and not a
   hidden one.
-- **A name that differs only in case is refused**, because APFS is case-insensitive by
-  default: `Default` and `default` would be one directory, and the second `wineboot` would
-  run inside the first bottle rather than making a new one.
+- **A name that differs only in case is refused for a new bottle**, because APFS is
+  case-insensitive by default: `Default` and `default` would be one directory, and the
+  second `wineboot` would run inside the first bottle rather than making a new one. It is
+  allowed when renaming one, which is the next section.
 - **Spaces are allowed**, although this repository otherwise keeps them out of its paths.
   That rule exists because the engine is an autotools `--prefix` that word-splits out of
   `CPPFLAGS` and `LDFLAGS`; a bottle name reaches Wine as the value of an environment
