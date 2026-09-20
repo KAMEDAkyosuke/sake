@@ -21,9 +21,9 @@ What nobody has done is press Play in the client and play. The evidence here is 
 state rather than a screen, and the client only hands out a login token after that press. If
 you were looking for something you can play today, this is not it yet.
 
-There are two windows: a library for what is installed and what can be started, and a setup
-wizard that walks the six steps above one at a time. The wizard opens itself when setup is
-not finished.
+There are two windows: a library — a section per bottle, with whatever can be started in
+each — and a setup wizard that walks the six steps above one at a time. The wizard opens
+itself when setup is not finished.
 
 What is here:
 

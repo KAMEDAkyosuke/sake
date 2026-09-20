@@ -101,7 +101,7 @@ struct SetupWindow: View {
         case .prefix: PrefixView(statuses: model.prefix)
         case .wine: WineView(status: model.wine)
         case .d3dMetal: D3DMetalView(status: model.d3dMetal)
-        case .bottle: BottleView(name: Bottle.defaultName, status: model.bottle)
+        case .bottle: BottleView(name: Bottle.defaultName, status: model.bottleStatus[Bottle.defaultName])
         }
     }
 

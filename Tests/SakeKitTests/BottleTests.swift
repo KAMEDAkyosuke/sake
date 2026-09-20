@@ -243,3 +243,79 @@ private func phases(in events: [BottleEvent]) -> [BottlePhase] {
     #expect(log.contains("=== verify Wine loaded FreeType from the engine"))
     #expect(events.contains(.output("wineboot: the prefix is up")))
 }
+
+@Test func onlyFinishedPrefixesCountAsBottles() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    #expect(Bottle.all(in: paths).isEmpty)
+
+    _ = await collect(BottleBuilder(paths: paths, name: "second").create())
+    _ = await collect(BottleBuilder(paths: paths, name: "first").create())
+    // What a run that was stopped part way leaves: a directory and no registry.
+    try FileManager.default.createDirectory(
+        at: paths.bottle(named: "half"), withIntermediateDirectories: true
+    )
+
+    #expect(Bottle.all(in: paths).map(\.name) == ["first", "second"])
+}
+
+@Test func aSecondBottleIsItsOwnPrefixAndItsOwnGames() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    let game = Title.known[0]
+
+    for name in [Bottle.defaultName, "testing"] {
+        _ = await collect(BottleBuilder(paths: paths, name: name).create())
+    }
+    let first = Bottle(paths: paths, name: Bottle.defaultName)
+    let second = Bottle(paths: paths, name: "testing")
+    try FileManager.default.createDirectory(
+        at: game.directoryURL(in: first), withIntermediateDirectories: true
+    )
+    try Data().write(to: game.executableURL(in: first))
+
+    #expect(first.url != second.url)
+    #expect(Title.installed(in: first).map(\.id) == [game.id])
+    #expect(Title.installed(in: second).isEmpty)
+}
+
+@Test func aNameWithSpacesIsFineAndReachesWineWhole() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    // The rule against spaces in paths is about the engine, which is an autotools
+    // --prefix. A bottle name is an environment value sake composes and no shell sees.
+    #expect(Bottle.problem(withName: "old saves", in: paths) == nil)
+
+    _ = await collect(BottleBuilder(paths: paths, name: "old saves").create())
+
+    let environment = recorded("wine.env", in: paths)
+    #expect(environment.contains("WINEPREFIX=\(paths.bottle(named: "old saves").path)"))
+    #expect(Bottle.all(in: paths).map(\.name) == ["old saves"])
+}
+
+@Test func aNameThatWouldNotMakeOneBottleIsRefused() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths).create())
+
+    #expect(Bottle.proposedName(from: "  spaced  ") == "spaced")
+    #expect(Bottle.problem(withName: "", in: paths)?.contains("needs a name") == true)
+    #expect(Bottle.problem(withName: "   ", in: paths)?.contains("needs a name") == true)
+    #expect(Bottle.problem(withName: "a/b", in: paths)?.contains("slash") == true)
+    #expect(Bottle.problem(withName: "..", in: paths)?.contains("dot") == true)
+    #expect(Bottle.problem(withName: ".hidden", in: paths)?.contains("dot") == true)
+
+    // APFS is case-insensitive by default, so this would be the same directory and the
+    // second wineboot would run inside the first bottle.
+    #expect(Bottle.problem(withName: "default", in: paths)?.contains("already") == true)
+    #expect(Bottle.problem(withName: "DEFAULT", in: paths)?.contains("default") == true)
+    #expect(Bottle.problem(withName: " default ", in: paths)?.contains("already") == true)
+
+    #expect(Bottle.problem(withName: "testing", in: paths) == nil)
+}

@@ -34,6 +34,13 @@ final class Run {
     }
 }
 
+/// A title and the bottle it was started in, because stopping goes after a `WINEPREFIX`
+/// and the wrong one would take somebody else's game down.
+struct RunningTitle: Equatable {
+    let bottle: String
+    let title: Title
+}
+
 /// Everything both windows show. The wizard and the library are two views of one machine's
 /// state, so the state cannot belong to either of them.
 @MainActor
@@ -48,7 +55,12 @@ final class AppModel {
     var prefix: [String: PrefixStatus] = [:]
     var wine: WineStatus?
     var d3dMetal: D3DMetalStatus?
-    var bottle: BottleStatus?
+
+    /// Keyed by bottle name, the way `sources` and `prefix` are keyed by component: the
+    /// wizard watches `default` while the library may be making another one.
+    var bottleStatus: [String: BottleStatus] = [:]
+    var isCreatingBottle = false
+    var typedBottleName = ""
 
     var importSources: [CrossOverBottle] = []
     var importSource: CrossOverBottle?
@@ -58,12 +70,15 @@ final class AppModel {
     var importStatus: ImportStatus?
     var importBlockedBy: String?
     var isImporting = false
+    /// Which bottle an import lands in. The sheet offers it as a menu once there is more
+    /// than one; until then it follows whatever the library has selected.
+    var importTarget = Bottle.defaultName
 
-    var titles: [Title] = []
-    var selectedTitle: Title.ID?
-    var runningTitle: Title?
+    var bottles: [Bottle] = []
+    var titles: [String: [Title]] = [:]
+    var selection: LibrarySelection?
+    var runningTitle: RunningTitle?
     var titleStatus: TitleStatus?
-    var titleBlockedBy: String?
 
     let fetching = Run()
     let building = Run()
@@ -78,6 +93,24 @@ final class AppModel {
     }
 
     var setup: Setup { Setup(paths: paths) }
+
+    var selectedBottle: String? {
+        switch selection {
+        case .bottle(let name): name
+        case .title(let bottle, _): bottle
+        case nil: nil
+        }
+    }
+
+    var selectedTitle: Title? {
+        guard case .title(let bottle, let id) = selection else { return nil }
+        return titles[bottle]?.first { $0.id == id }
+    }
+
+    /// Why Play is off for this title, as a sentence, or `nil` when it is on.
+    func blocker(for title: Title, in bottle: String) -> String? {
+        TitleLauncher(paths: paths, name: bottle, title: title).missingPrerequisite
+    }
 
     func state(of step: SetupStep) -> StepState {
         setup.state(of: step, machineIsReady: machineIsReady)
@@ -111,8 +144,7 @@ final class AppModel {
             installing.start({ for await e in D3DMetalInstaller(paths: self.paths).install() { self.apply(e) } },
                              then: survey)
         case .bottle:
-            creating.start({ for await e in BottleBuilder(paths: self.paths).create() { self.apply(e) } },
-                           then: survey)
+            create(Bottle.defaultName)
         }
     }
 
@@ -150,10 +182,25 @@ final class AppModel {
             d3dMetal = .alreadyInstalled(version: installer.installedVersion())
         }
 
-        let bottles = BottleBuilder(paths: paths)
-        if bottles.bottle.exists {
-            let counts = bottles.bottle.systemFileCounts()
-            bottle = .alreadyCreated(system32: counts.system32, sysWoW64: counts.sysWoW64)
+        bottles = Bottle.all(in: paths)
+        for bottle in bottles where bottleStatus[bottle.name] == nil {
+            let counts = bottle.systemFileCounts()
+            bottleStatus[bottle.name] = .alreadyCreated(
+                system32: counts.system32, sysWoW64: counts.sysWoW64
+            )
+        }
+        titles = Dictionary(uniqueKeysWithValues: bottles.map { ($0.name, Title.installed(in: $0)) })
+
+        // A selection that no longer names anything -- the first survey, or a bottle just
+        // made -- lands on something rather than leaving the detail pane empty.
+        if selection == nil || !isStillThere(selection) {
+            selection = bottles.first.map { bottle in
+                titles[bottle.name]?.first.map { .title(bottle: bottle.name, id: $0.id) }
+                    ?? .bottle(bottle.name)
+            }
+        }
+        if !bottles.contains(where: { $0.name == importTarget }) {
+            importTarget = selectedBottle ?? bottles.first?.name ?? Bottle.defaultName
         }
 
         importSources = CrossOverBottle.available()
@@ -161,7 +208,7 @@ final class AppModel {
             importSource = importSources.first
         }
         if let source = importSource {
-            let importer = BottleImporter(paths: paths, source: source)
+            let importer = BottleImporter(paths: paths, name: importTarget, source: source)
             importCandidates = importer.candidates()
             importBlockedBy = importer.missingPrerequisite
         } else {
@@ -169,20 +216,44 @@ final class AppModel {
             importBlockedBy = "No CrossOver bottle to import from."
         }
 
-        titles = Title.installed(in: bottles.bottle)
-        if selectedTitle == nil || !titles.contains(where: { $0.id == selectedTitle }) {
-            selectedTitle = titles.first?.id
+    }
+
+    private func isStillThere(_ selection: LibrarySelection?) -> Bool {
+        switch selection {
+        case .bottle(let name): bottles.contains { $0.name == name }
+        case .title(let bottle, let id): titles[bottle]?.contains { $0.id == id } == true
+        case nil: false
         }
-        titleBlockedBy = titles.isEmpty
-            ? "Nothing that can be started is in this bottle yet."
-            : TitleLauncher(paths: paths, title: titles[0]).missingPrerequisite
+    }
+
+    /// Making a bottle, whether the wizard asked for the first one or the library asked for
+    /// another. One ``Run`` for both: two winebooots at once is not a thing to allow.
+    func create(_ name: String) {
+        creating.start({
+            for await e in BottleBuilder(paths: self.paths, name: name).create() {
+                self.apply(e, for: name)
+            }
+        }) {
+            self.survey()
+            // Land on what was just made, which is also what the import sheet will offer.
+            if self.bottles.contains(where: { $0.name == name }) {
+                self.selection = .bottle(name)
+                self.importTarget = name
+            }
+        }
+    }
+
+    func beginImport(into bottle: String) {
+        importTarget = bottle
+        importStatus = nil
+        isImporting = true
     }
 
     /// What the import sheet offers. The names are a pair of directory listings and come
     /// back at once; the sizes walk the source bottle, so they arrive afterwards.
     func loadImportOffer() {
         guard let source = importSource else { return }
-        let importer = BottleImporter(paths: paths, source: source)
+        let importer = BottleImporter(paths: paths, name: importTarget, source: source)
         importCandidates = importer.candidates()
         importBlockedBy = importer.missingPrerequisite
         importChoices = Set(importCandidates)
@@ -260,17 +331,19 @@ final class AppModel {
         }
     }
 
-    private func apply(_ event: BottleEvent) {
+    private func apply(_ event: BottleEvent, for name: String) {
         switch event {
         case .alreadyCreated(let system32, let sysWoW64):
-            bottle = .alreadyCreated(system32: system32, sysWoW64: sysWoW64)
-        case .started: bottle = .working(phase: "starting", line: "")
-        case .phase(let phase): bottle = .working(phase: phase.rawValue, line: "")
+            bottleStatus[name] = .alreadyCreated(system32: system32, sysWoW64: sysWoW64)
+        case .started: bottleStatus[name] = .working(phase: "starting", line: "")
+        case .phase(let phase): bottleStatus[name] = .working(phase: phase.rawValue, line: "")
         case .output(let line):
-            if case .working(let phase, _) = bottle { bottle = .working(phase: phase, line: line) }
+            if case .working(let phase, _) = bottleStatus[name] {
+                bottleStatus[name] = .working(phase: phase, line: line)
+            }
         case .created(let system32, let sysWoW64):
-            bottle = .created(system32: system32, sysWoW64: sysWoW64)
-        case .failed(let reason, _): bottle = .failed(reason)
+            bottleStatus[name] = .created(system32: system32, sysWoW64: sysWoW64)
+        case .failed(let reason, _): bottleStatus[name] = .failed(reason)
         case .finished: break
         }
     }
@@ -279,7 +352,8 @@ final class AppModel {
         guard let source = importSource else { return }
         let chosen = Array(importChoices)
         importing.start({
-            for await e in BottleImporter(paths: self.paths, source: source).run(chosen) {
+            let importer = BottleImporter(paths: self.paths, name: self.importTarget, source: source)
+            for await e in importer.run(chosen) {
                 self.apply(e)
             }
         }) {
@@ -305,11 +379,12 @@ final class AppModel {
         }
     }
 
-    func startTitle(_ title: Title) {
-        runningTitle = title
+    func startTitle(_ title: Title, in bottle: String) {
+        runningTitle = RunningTitle(bottle: bottle, title: title)
         titleStatus = .starting
         playing.start({
-            for await e in TitleLauncher(paths: self.paths, title: title).launch() { self.apply(e) }
+            let launcher = TitleLauncher(paths: self.paths, name: bottle, title: title)
+            for await e in launcher.launch() { self.apply(e) }
         }) {
             self.runningTitle = nil
             self.survey()
@@ -319,10 +394,13 @@ final class AppModel {
     /// Cancelling reaches `wine` and nothing else, so the bottle is taken down explicitly
     /// and then looked at again rather than assumed down. See docs/runtime.md.
     func stopTitle() {
-        guard let title = runningTitle else { return }
+        guard let running = runningTitle else { return }
         playing.stop()
         Task {
-            let left = await TitleLauncher(paths: paths, title: title).stop()
+            let launcher = TitleLauncher(
+                paths: paths, name: running.bottle, title: running.title
+            )
+            let left = await launcher.stop()
             titleStatus = .stopped(left: left.count)
             runningTitle = nil
             survey()

@@ -12,8 +12,8 @@ those were measured in sake.
 /Applications/Sake.app                       the app, and nothing else
 ~/Library/Sake/
     engine/                                  Wine, its libraries and D3DMetal, 1.1 GB
-    bottles/                                 prefixes and the games in them; empty is
-                                             1 GB, and a cloned game adds nothing
+    bottles/<name>/                          one prefix each, and the games in them; empty
+                                             is 1 GB, and a cloned game adds nothing
 ~/Library/Caches/Sake/
     dl/ sources/ toolchain/ build/           downloads and build intermediates, ~4 GB
     d3dmetal/                                Apple's redist/lib, kept so that the image
@@ -22,6 +22,27 @@ those were measured in sake.
 
 Uninstalling is an explicit action in the app, not a side effect of dragging the bundle to
 the Trash.
+
+## A bottle's name is a directory name
+
+There can be as many bottles as somebody wants, and the name they type is both the directory
+under `bottles/` and the value of `WINEPREFIX`. A second one, made on 2026-09-19, cost what
+the first did — `runtime.md` has the figures — and `Bottle.all` finds it by its `system.reg`
+rather than by it being a directory, so a creation stopped part way is not offered as a
+bottle.
+
+Three names are refused, and one that looks like it should be is not:
+
+- **Empty, containing `/`, or starting with `.`** — one folder's name, not a path, and not a
+  hidden one.
+- **A name that differs only in case is refused**, because APFS is case-insensitive by
+  default: `Default` and `default` would be one directory, and the second `wineboot` would
+  run inside the first bottle rather than making a new one.
+- **Spaces are allowed**, although this repository otherwise keeps them out of its paths.
+  That rule exists because the engine is an autotools `--prefix` that word-splits out of
+  `CPPFLAGS` and `LDFLAGS`; a bottle name reaches Wine as the value of an environment
+  variable sake composes, and no shell ever sees it. Verified with a bottle called
+  `old saves` on 2026-09-19.
 
 ## Importing a game costs nothing
 

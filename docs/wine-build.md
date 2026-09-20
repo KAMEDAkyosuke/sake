@@ -75,7 +75,8 @@ game, and that is a long way downstream of here.
 
 An engine that is already built does not pick a new patch up: `make install` is what writes
 `bin/wine`, and its presence is what says the step is done. Changing a patch means deleting
-that and rebuilding.
+that and rebuilding, and that is a full build rather than an incremental one: measured at
+4m24s on 2026-09-19, no cheaper than the first.
 
 ## configure flags that must not be removed
 

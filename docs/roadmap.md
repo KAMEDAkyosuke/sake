@@ -93,11 +93,22 @@ tested.
 The library is a list with a detail pane rather than a row per game, for two reasons worth
 keeping: a row per game means a Play button per game, and the detail pane is where per-title
 settings go when they arrive. Importing is a sheet on that window rather than a window of
-its own — it belongs to one bottle, and it finishes in under a second. The setup wizard is
-a window instead precisely because it does not: it runs for tens of minutes and sends the
-user to a browser part way through.
+its own because it finishes in under a second. It used to be justified by belonging to one
+bottle as well; it now chooses which one, so that half of the reason has gone. The setup
+wizard is a window instead precisely because it does not finish quickly: it runs for tens of
+minutes and sends the user to a browser part way through.
 
-Still to come: more than one bottle, adding and editing titles, and uninstall.
+**More than one bottle followed on 2026-09-19.** The library is a section per bottle, and a
+bottle is selectable in its own right rather than only through the games in it — a bottle
+just made has nothing in it, so a heading alone would be a dead end. What the detail pane for
+one offers is the import, which is the only thing an empty bottle can do.
+
+Nothing in `SakeKit` had to change to allow it: `BottleBuilder`, `BottleImporter` and
+`TitleLauncher` all already took a name. What was missing was a way to enumerate what is on
+disk and a way to say whether a typed name can be used, both of which are on `Bottle` and
+tested there rather than in the sheet that asks.
+
+Still to come: adding and editing titles, renaming or deleting a bottle, and uninstall.
 
 ## The Swift/subprocess boundary
 

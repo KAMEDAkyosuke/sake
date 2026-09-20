@@ -20,6 +20,18 @@ struct ImportSheet: View {
             Text("Import from CrossOver")
                 .font(.title2.weight(.semibold))
 
+            if model.bottles.count > 1 {
+                Picker("Into", selection: $model.importTarget) {
+                    ForEach(model.bottles, id: \.name) { bottle in
+                        Text(bottle.name).tag(bottle.name)
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+                .disabled(model.importing.isRunning)
+                .onChange(of: model.importTarget) { model.loadImportOffer() }
+            }
+
             if model.importSources.count > 1 {
                 Picker("From", selection: $model.importSource) {
                     ForEach(model.importSources) { source in
@@ -75,7 +87,7 @@ struct ImportSheet: View {
                 .foregroundStyle(.orange)
                 .fixedSize(horizontal: false, vertical: true)
         } else if model.importCandidates.isEmpty {
-            Text("Nothing here this bottle does not already have.")
+            Text("Nothing here \(model.importTarget) does not already have.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         } else {

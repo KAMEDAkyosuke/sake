@@ -13,8 +13,49 @@ public struct Bottle: Sendable, Equatable {
         self.name = name
     }
 
-    /// Until there is more than one, there is this one.
+    /// The one the setup wizard makes. Every other bottle is named by whoever made it.
     public static let defaultName = "default"
+
+    /// Every prefix under `paths.bottles`, in name order.
+    ///
+    /// Filtered by ``exists`` rather than by being a directory, which drops a bottle whose
+    /// creation was stopped half way for the same reason it drops `.DS_Store`.
+    public static func all(in paths: Paths = .default) -> [Bottle] {
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: paths.bottles.path)) ?? []
+        return entries.sorted().map { Bottle(paths: paths, name: $0) }.filter(\.exists)
+    }
+
+    /// What somebody typed, without the spaces they did not mean.
+    public static func proposedName(from typed: String) -> String {
+        typed.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// What is wrong with `typed` as a new bottle's name, as a sentence, or `nil` when
+    /// nothing is.
+    ///
+    /// Spaces are deliberately allowed, although this repository has a standing rule against
+    /// them in paths: that rule is about the engine, which is an autotools `--prefix` and
+    /// word-splits out of `CPPFLAGS`. A bottle name reaches Wine as the value of `WINEPREFIX`
+    /// in an environment sake composes, and never goes through a shell. See docs/layout.md.
+    public static func problem(withName typed: String, in paths: Paths = .default) -> String? {
+        let name = proposedName(from: typed)
+
+        if name.isEmpty { return "A bottle needs a name." }
+        if name.contains("/") {
+            return "A bottle name is one folder's name, so it cannot contain a slash."
+        }
+        if name.hasPrefix(".") {
+            return "A name starting with a dot would make a bottle you could not see."
+        }
+        if let taken = all(in: paths).first(where: {
+            $0.name.compare(name, options: .caseInsensitive) == .orderedSame
+        }) {
+            // Case-insensitively, because APFS is by default: "Default" and "default" would
+            // be one directory and the second wineboot would run inside the first bottle.
+            return "There is already a bottle called \(taken.name)."
+        }
+        return nil
+    }
 
     public var url: URL { paths.bottle(named: name) }
     public var engine: URL { paths.engine }
