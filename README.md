@@ -35,7 +35,9 @@ What is here:
 | `Sources/sake/` | the SwiftUI app — two windows, kept thin |
 | `patches/` | the two changes sake makes to Wine's own code — LGPL-2.1-or-later, not MIT |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
+| `assets/` | the app icon, and the code that draws it |
 | `scripts/build-app.sh` | builds `target/Sake.app` |
+| `scripts/make-icon.sh` | redraws `assets/Sake.icns` |
 | `scripts/test.sh` | runs the tests |
 
 ## The goal

@@ -67,6 +67,8 @@ cp "${BUILD_DIR}/sake" "${APP_DIR}/Contents/MacOS/"
 # top of the repository says and Sources/SakeKit/Resources would hide.
 cp -R "${PROJECT_ROOT}/patches" "${APP_DIR}/Contents/Resources/"
 
+cp "${PROJECT_ROOT}/assets/Sake.icns" "${APP_DIR}/Contents/Resources/"
+
 sed "s/VERSION_PLACEHOLDER/${VERSION}/g" "${PROJECT_ROOT}/Info.plist.template" > "${APP_DIR}/Contents/Info.plist"
 
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"

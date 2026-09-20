@@ -53,6 +53,14 @@ so the app uses it. It is only SwiftUI's own macros on SDK 27 that have no plugi
 signs it. There is no Xcode project and none should be added. The version lives in `VERSION`
 and is substituted into `Info.plist.template`.
 
+The icon is `assets/Sake.icns`, committed, and `Info.plist` points at it by name — there is
+no asset catalog, because that would want the Xcode project this repository does not have.
+`assets/icon.swift` draws it and `./scripts/make-icon.sh` regenerates the `.icns`; run that
+by hand after changing the drawing, since the build only copies the result. That script does
+**not** source `sdk-env.sh`: the SDK pinning above exists for SwiftUI's macros, and a
+CoreGraphics renderer needs none of it — measured 2026-09-20, `swift assets/icon.swift` runs
+on the default SDK 27.0 with the Command Line Tools alone.
+
 ## Tests
 
 `./scripts/test.sh`. It needs two overrides, neither of which is discoverable from the error

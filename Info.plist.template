@@ -8,6 +8,8 @@
     <string>dev.typester.sake</string>
     <key>CFBundleName</key>
     <string>Sake</string>
+    <key>CFBundleIconFile</key>
+    <string>Sake</string>
     <key>CFBundleVersion</key>
     <string>VERSION_PLACEHOLDER</string>
     <key>CFBundleShortVersionString</key>
