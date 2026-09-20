@@ -53,7 +53,15 @@ public struct Title: Sendable, Hashable, Codable, Identifiable {
         )
     ]
 
+    /// What can be started in this bottle: the ones sake knows, then the ones somebody
+    /// added by hand, both filtered by what is actually there. A stored title cannot take
+    /// a known title's id -- ``TitleStore`` does not hand that id out -- so a duplicate
+    /// here would be a file edited by hand, and the known one wins.
     public static func installed(in bottle: Bottle) -> [Title] {
-        known.filter { $0.isInstalled(in: bottle) }
+        let known = known.filter { $0.isInstalled(in: bottle) }
+        let ids = Set(known.map(\.id))
+        let added = TitleStore(bottle: bottle).load()
+            .filter { !ids.contains($0.id) && $0.isInstalled(in: bottle) }
+        return known + added
     }
 }

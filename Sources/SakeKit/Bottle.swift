@@ -132,16 +132,72 @@ public struct Bottle: Sendable, Equatable {
         )
     }
 
-    /// Take the bottle down.
+    /// Kill this prefix's wineserver.
     ///
-    /// Killing wineserver is what stops a bottle: a game's Agent runs with ppid 1 and
-    /// wineserver is a daemon of its own, so terminating what sake started leaves both
-    /// running. And `wineserver -k` without `WINEPREFIX` goes after the default `~/.wine`,
-    /// kills nothing of yours and exits 0 -- which is why this is a method on the bottle
-    /// rather than a command anyone may assemble.
+    /// Not the whole of taking a bottle down -- see ``takeDown(runner:)``, which this is
+    /// the first half of. `wineserver -k` without `WINEPREFIX` goes after the default
+    /// `~/.wine`, kills nothing of yours and exits 0, which is why this is a method on the
+    /// bottle rather than a command anyone may assemble.
     @discardableResult
     public func stop(runner: ProcessRunner = ProcessRunner()) async throws -> CommandResult {
         try await runner.run(command("wineserver", ["-k"]))
+    }
+
+    /// Where wineserver keeps this prefix's socket: `/tmp/.wine-<uid>/server-<dev>-<inode>`,
+    /// both halves hex, taken from the prefix directory itself.
+    ///
+    /// This is the only thing on the machine that says which prefix a running Wine process
+    /// belongs to -- `ps` shows `C:\windows\system32\services.exe` and nothing else --
+    /// and because it is an inode it survives the bottle being renamed. Measured against a
+    /// live prefix on 2026-09-20; see docs/runtime.md.
+    public var serverDirectory: URL? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let device = attributes[.systemNumber] as? Int,
+              let inode = attributes[.systemFileNumber] as? Int
+        else { return nil }
+        return URL(filePath: "/tmp/.wine-\(getuid())")
+            .appending(path: "server-\(String(device, radix: 16))-\(String(inode, radix: 16))")
+    }
+
+    /// Everything running in this prefix, including what sake did not start.
+    public func processes(runner: ProcessRunner = ProcessRunner()) async -> [Int32] {
+        guard let directory = serverDirectory,
+              FileManager.default.fileExists(atPath: directory.path)
+        else { return [] }
+        // lsof exits 1 when it finds nothing, which is not a failure here.
+        let result = try? await runner.run(Command(
+            executable: URL(filePath: "/usr/sbin/lsof"),
+            arguments: ["-t", "-w", "+D", directory.path]
+        ))
+        return (result?.standardOutput ?? "")
+            .split(whereSeparator: \.isNewline)
+            .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    /// Take the bottle down, and say what is still running afterwards.
+    ///
+    /// Killing wineserver is not enough on its own. Measured on 2026-09-20, after
+    /// `wineserver -k` took down the game and the server: `services.exe`, two
+    /// `winedevice.exe`, `plugplay.exe`, `svchost.exe`, `explorer.exe` and `rpcss.exe` were
+    /// still there with ppid 1, and stayed for the rest of the session -- long enough for
+    /// the Dock to keep showing an app that had already exited. Six of the seven took
+    /// SIGTERM; one needed SIGKILL.
+    @discardableResult
+    public func takeDown(runner: ProcessRunner = ProcessRunner()) async -> [Int32] {
+        _ = try? await stop(runner: runner)
+        try? await Task.sleep(for: .seconds(1))
+
+        let afterServer = await processes(runner: runner)
+        guard !afterServer.isEmpty else { return [] }
+        for pid in afterServer { kill(pid, SIGTERM) }
+        try? await Task.sleep(for: .seconds(2))
+
+        let afterTerm = await processes(runner: runner)
+        guard !afterTerm.isEmpty else { return [] }
+        for pid in afterTerm { kill(pid, SIGKILL) }
+        try? await Task.sleep(for: .seconds(1))
+
+        return await processes(runner: runner)
     }
 
     /// Give the bottle another name, which is a directory rename and nothing else.
@@ -158,7 +214,7 @@ public struct Bottle: Sendable, Equatable {
         let renamed = Bottle(paths: paths, name: Self.proposedName(from: typed))
         guard renamed.name != name else { return self }
 
-        try await stop(runner: runner)
+        await takeDown(runner: runner)
         // Including a change of case only, which `moveItem` handles although the volume is
         // case-insensitive and reports the new name as already existing. A guard on that
         // would refuse a legal rename; excluding this bottle from the collision check in
@@ -169,16 +225,16 @@ public struct Bottle: Sendable, Equatable {
 
     /// Take the bottle away, and say where it went.
     ///
-    /// Stopped first for the reason ``stop()`` exists: wineserver outlives whatever started
-    /// it, and a bottle removed from under a running one is a live process writing into a
-    /// tree nobody can find.
+    /// Taken down first for the reason ``takeDown(runner:)`` exists: wineserver and the
+    /// prefix's own services outlive whatever started them, and a bottle removed from
+    /// under a running one is a live process writing into a tree nobody can find.
     @discardableResult
     public func remove(
         runner: ProcessRunner = ProcessRunner(), trash: Trash = .system
     ) async throws -> URL? {
-        // `try?`: a bottle outlives its engine. With no `bin/wineserver` there is nothing
-        // to kill, and that must not be what stops somebody throwing the bottle away.
-        _ = try? await stop(runner: runner)
+        // A bottle outlives its engine: with no `bin/wineserver` there is nothing to kill,
+        // and that must not be what stops somebody throwing the bottle away.
+        await takeDown(runner: runner)
         return try trash.take(url)
     }
 }

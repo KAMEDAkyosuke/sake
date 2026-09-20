@@ -37,6 +37,14 @@ struct LibraryWindow: View {
                         model.beginImport(into: model.selectedBottle ?? Bottle.defaultName)
                     }
                     .disabled(model.bottles.isEmpty)
+                    Button("Install from an Installer…") {
+                        model.beginInstall(into: model.selectedBottle ?? Bottle.defaultName)
+                    }
+                    .disabled(model.bottles.isEmpty)
+                    Button("Add a Title…") {
+                        model.beginAddTitle(into: model.selectedBottle ?? Bottle.defaultName)
+                    }
+                    .disabled(model.bottles.isEmpty)
                 } label: {
                     Label("Add", systemImage: "plus")
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -56,6 +64,8 @@ struct LibraryWindow: View {
         }
         .frame(minWidth: 620, minHeight: 380)
         .sheet(isPresented: $model.isImporting) { ImportSheet().environment(model) }
+        .sheet(isPresented: $model.isInstalling) { InstallSheet().environment(model) }
+        .sheet(isPresented: $model.isAddingTitle) { AddTitleSheet().environment(model) }
         .sheet(isPresented: $model.isCreatingBottle) { NewBottleSheet().environment(model) }
         .sheet(isPresented: $model.isUninstalling) { UninstallSheet().environment(model) }
         .sheet(isPresented: $model.isRenamingBottle) {
@@ -126,6 +136,15 @@ struct LibraryWindow: View {
             ForEach(titles) { title in
                 Label(title.name, systemImage: "gamecontroller")
                     .tag(LibrarySelection.title(bottle: bottle.name, id: title.id))
+                    .contextMenu {
+                        // Only what was added by hand, and it takes the entry away rather
+                        // than the game: deleting an install is the bottle's business.
+                        if model.isRemovable(title, in: bottle.name) {
+                            Button("Remove from Library") {
+                                model.removeTitle(title, from: bottle.name)
+                            }
+                        }
+                    }
             }
         }
     }
@@ -154,6 +173,7 @@ struct LibraryWindow: View {
                     problem: model.problem(with: name),
                     importCandidates: name == model.importTarget ? model.importCandidates.count : nil,
                     importing: { model.beginImport(into: name) },
+                    installing: { model.beginInstall(into: name) },
                     renaming: { model.beginRename(bottle) },
                     deleting: { model.isDeletingBottle = true }
                 )

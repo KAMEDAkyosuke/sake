@@ -9,8 +9,9 @@ What the app does today is answer whether this Mac can do the rest — Apple sil
 Rosetta 2, the Command Line Tools, Apple's Game Porting Toolkit, room on disk — then
 download the eleven sources, check them against known hashes, unpack them, build the tools
 and libraries Wine is configured against, build CrossOver's Wine itself, guide Apple's
-D3DMetal in from an image you mounted, make a bottle with the result, clone a game you
-already installed under CrossOver into it, and start it.
+D3DMetal in from an image you mounted, make a bottle with the result, put a game in it —
+either by cloning one you already installed under CrossOver or by running the game's own
+installer, which you supply — and start it.
 
 The Battle.net client comes up, reaches Blizzard and loads its login page. Diablo IV starts
 as well: launched behind a live parent process — the shape the client's Agent creates, and
@@ -23,9 +24,10 @@ you were looking for something you can play today, this is not it yet.
 
 There are two windows: a library — a section per bottle, with whatever can be started in
 each — and a setup wizard that walks the six steps above one at a time. The wizard opens
-itself when setup is not finished. A bottle can be renamed or thrown away from the library,
-and the app menu has an Uninstall that takes away everything sake made; all of it goes to the
-Trash, so it can be put back.
+itself when setup is not finished. Anything already in a bottle can be added to the library
+by hand, so a game sake knows nothing about can still be started. A bottle can be renamed or
+thrown away from the library, and the app menu has an Uninstall that takes away everything
+sake made; all of it goes to the Trash, so it can be put back.
 
 What is here:
 

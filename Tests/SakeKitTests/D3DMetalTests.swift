@@ -9,7 +9,15 @@ private struct Fixture {
     let root: URL
 
     var installer: D3DMetalInstaller {
-        D3DMetalInstaller(paths: paths, volumes: volumes)
+        D3DMetalInstaller(paths: paths, volumes: volumes, hdiutil: hdiutil)
+    }
+
+    var hdiutil: URL { root.appending(path: "hdiutil") }
+
+    /// How the fake `hdiutil` was called, one line per call.
+    var hdiutilCalls: [String] {
+        let text = (try? String(contentsOf: root.appending(path: "hdiutil.args"), encoding: .utf8)) ?? ""
+        return text.split(separator: "\n").map(String.init)
     }
 
     func remove() {
@@ -17,12 +25,37 @@ private struct Fixture {
     }
 }
 
+/// An `hdiutil` that records how it was called, mounts by making the volume directory and
+/// unmounts by taking it away. `detachFails` is the case a real one cannot be made to
+/// reproduce here.
+private func makeFakeHdiutil(
+    at url: URL, volumes: URL, staged: URL, detachFails: Bool = false
+) throws {
+    let script = """
+        #!/bin/sh
+        echo "$@" >> "$(dirname "$0")/hdiutil.args"
+        case "$1" in
+        attach)
+            cp -R "\(staged.path)" "\(volumes.path)/"
+            ;;
+        detach)
+            \(detachFails ? "echo 'resource busy' >&2; exit 16" : "rm -rf \"$2\"")
+            ;;
+        esac
+        exit 0
+        """
+    try script.write(to: url, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+}
+
 /// A mounted evaluation-environment volume with the layout Apple's image has, and an engine
 /// with a Wine in it.
 private func makeFixture(
     redist: Bool = true,
     wine: Bool = true,
-    mounted: Bool = true
+    mounted: Bool = true,
+    nestedImage: Bool = false,
+    detachFails: Bool = false
 ) throws -> Fixture {
     let manager = FileManager.default
     let root = manager.temporaryDirectory.appending(path: "sake-d3dmetal-\(UUID().uuidString)")
@@ -54,7 +87,22 @@ private func makeFixture(
         if redist { try makeRedist(at: volume.appending(path: "redist/lib")) }
     }
 
-    return Fixture(paths: paths, volumes: volumes, root: root)
+    // What the fake `hdiutil` will put in place of a real mount, built the same way the
+    // mounted case is.
+    let staged = root.appending(path: "staged/\(GamePortingToolkit.innerVolumePrefix) 4.0 beta 2")
+    if nestedImage {
+        let outer = volumes.appending(path: GamePortingToolkit.outerVolume.lastPathComponent)
+        let image = outer.appending(path: "\(GamePortingToolkit.innerVolumePrefix) 4.0 beta 2.dmg")
+        manager.createFile(atPath: image.path, contents: nil)
+        try manager.createDirectory(at: staged, withIntermediateDirectories: true)
+        if redist { try makeRedist(at: staged.appending(path: "redist/lib")) }
+    }
+
+    let fixture = Fixture(paths: paths, volumes: volumes, root: root)
+    try makeFakeHdiutil(
+        at: fixture.hdiutil, volumes: volumes, staged: staged, detachFails: detachFails
+    )
+    return fixture
 }
 
 /// `redist/lib` as the image lays it out, symlinks and all.
@@ -254,4 +302,53 @@ private func failureReason(in events: [D3DMetalEvent]) -> String? {
 
     #expect(reason?.contains("redist/lib") == true)
     #expect(!fixture.installer.isInstalled)
+}
+
+@Test func whatSakeMountsItselfItPutsBack() async throws {
+    let fixture = try makeFixture(mounted: false, nestedImage: true)
+    defer { fixture.remove() }
+
+    let events = await collect(fixture.installer.install())
+    #expect(!events.contains { if case .failed = $0 { true } else { false } })
+
+    // Mounted, then unmounted again, in that order. An image left mounted keeps its
+    // diskimages-helper running, and macOS then counts it as a subordinate of the app --
+    // which leaves sake in the Dock after it has quit. Found that way on 2026-09-20.
+    let calls = fixture.hdiutilCalls
+    #expect(calls.count == 2)
+    #expect(calls.first?.hasPrefix("attach -nobrowse -readonly") == true)
+    #expect(calls.last?.hasPrefix("detach ") == true)
+    #expect(events.contains(.phase(.detach)))
+    #expect(!FileManager.default.fileExists(
+        atPath: fixture.volumes.appending(path: "\(GamePortingToolkit.innerVolumePrefix) 4.0 beta 2").path
+    ))
+    // And the copy it was mounted for happened.
+    #expect(FileManager.default.fileExists(atPath: fixture.paths.d3dMetalFramework.path))
+}
+
+@Test func anImageTheUserOpenedIsLeftAlone() async throws {
+    let fixture = try makeFixture()
+    defer { fixture.remove() }
+
+    let events = await collect(fixture.installer.install())
+    #expect(!events.contains { if case .failed = $0 { true } else { false } })
+
+    // Nothing was mounted by sake, so nothing is unmounted by it either.
+    #expect(fixture.hdiutilCalls.isEmpty)
+    #expect(!events.contains(.phase(.detach)))
+    #expect(FileManager.default.fileExists(
+        atPath: fixture.volumes.appending(path: "\(GamePortingToolkit.innerVolumePrefix) 4.0 beta 2").path
+    ))
+}
+
+@Test func aDetachThatFailsDoesNotFailTheInstall() async throws {
+    let fixture = try makeFixture(mounted: false, nestedImage: true, detachFails: true)
+    defer { fixture.remove() }
+
+    let events = await collect(fixture.installer.install())
+
+    // redist/lib is in the cache by then, which was the job.
+    #expect(!events.contains { if case .failed = $0 { true } else { false } })
+    #expect(events.contains { if case .installed = $0 { true } else { false } })
+    #expect(fixture.hdiutilCalls.last?.hasPrefix("detach ") == true)
 }

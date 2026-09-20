@@ -14,6 +14,7 @@ struct BottleDetail: View {
     /// has not been worked out for this bottle.
     let importCandidates: Int?
     let importing: () -> Void
+    let installing: () -> Void
     let renaming: () -> Void
     let deleting: () -> Void
 
@@ -30,6 +31,8 @@ struct BottleDetail: View {
 
             HStack(spacing: 12) {
                 Button("Import from CrossOver…", action: importing)
+                    .controlSize(.large)
+                Button("Install from an Installer…", action: installing)
                     .controlSize(.large)
                 Button("Rename…", action: renaming)
                     .controlSize(.large)

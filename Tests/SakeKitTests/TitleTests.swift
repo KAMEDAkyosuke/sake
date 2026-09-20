@@ -198,3 +198,86 @@ private func collect(_ stream: AsyncStream<LaunchEvent>) async -> [LaunchEvent] 
     #expect(!pids.contains("94878"))
     #expect(!pids.contains("95201"))
 }
+
+@Test func aTitleAddedByHandIsKeptInTheBottleAndComesBack() throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeEngineAndBottle(paths, installing: nil)
+
+    let bottle = Bottle(paths: paths)
+    let executable = bottle.driveC.appending(path: "Games/Thing/Thing.exe")
+    try FileManager.default.createDirectory(
+        at: executable.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try Data().write(to: executable)
+
+    let store = TitleStore(bottle: bottle)
+    let title = try store.title(at: executable, named: "Thing", arguments: ["-windowed"])
+    try store.add(title)
+
+    // Relative to drive_c, which is what survives the bottle being renamed or moved.
+    #expect(title.executable == "Games/Thing/Thing.exe")
+    #expect(title.id == "thing")
+    #expect(TitleStore(bottle: bottle).load() == [title])
+    #expect(Title.installed(in: bottle) == [title])
+
+    // The file is what says whether it is still there; the entry alone is not enough.
+    try FileManager.default.removeItem(at: executable)
+    #expect(Title.installed(in: bottle).isEmpty)
+    #expect(TitleStore(bottle: bottle).load() == [title])
+
+    try store.remove(id: title.id)
+    #expect(TitleStore(bottle: bottle).load().isEmpty)
+}
+
+@Test func aTitleHasToBeAProgramInsideTheBottle() throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeEngineAndBottle(paths, installing: nil)
+
+    let bottle = Bottle(paths: paths)
+    let store = TitleStore(bottle: bottle)
+
+    // Somewhere on the Mac, which would be started outside the prefix and would not
+    // survive the bottle moving.
+    let outside = paths.cache.appending(path: "Downloads/Thing.exe")
+    try FileManager.default.createDirectory(
+        at: outside.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try Data().write(to: outside)
+    #expect(throws: TitleStoreError.outsideBottle("Thing.exe")) {
+        try store.title(at: outside, named: "Thing")
+    }
+
+    let inside = bottle.driveC.appending(path: "Thing.exe")
+    try FileManager.default.createDirectory(at: bottle.driveC, withIntermediateDirectories: true)
+    try Data().write(to: inside)
+    #expect(throws: TitleStoreError.unnamed) {
+        try store.title(at: inside, named: "   ")
+    }
+    #expect(throws: TitleStoreError.notThere(bottle.driveC.appending(path: "Missing.exe").path)) {
+        try store.title(at: bottle.driveC.appending(path: "Missing.exe"), named: "Missing")
+    }
+}
+
+@Test func anAddedTitleNeverTakesAKnownTitlesIdentifier() throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeEngineAndBottle(paths)
+
+    let bottle = Bottle(paths: paths)
+    let store = TitleStore(bottle: bottle)
+    let executable = bottle.driveC.appending(path: "Other/Battle.net.exe")
+    try FileManager.default.createDirectory(
+        at: executable.deletingLastPathComponent(), withIntermediateDirectories: true
+    )
+    try Data().write(to: executable)
+
+    // "Battle.net" slugs to the id the known title already has, and a log file is named
+    // after it.
+    let title = try store.title(at: executable, named: "Battle.net")
+    #expect(title.id == "battle-net-2")
+
+    try store.add(title)
+    #expect(Title.installed(in: bottle) == [battleNet, title])
+}

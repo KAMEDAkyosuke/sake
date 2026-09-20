@@ -14,6 +14,8 @@ those were measured in sake.
     engine/                                  Wine, its libraries and D3DMetal, 1.1 GB
     bottles/<name>/                          one prefix each, and the games in them; empty
                                              is 1 GB, and a cloned game adds nothing
+    bottles/<name>/sake-titles.json          what was added to the library by hand, if
+                                             anything — see below
 ~/Library/Caches/Sake/
     dl/ sources/ toolchain/ build/           downloads and build intermediates, ~4 GB
     d3dmetal/                                Apple's redist/lib, kept so that the image
@@ -90,6 +92,20 @@ case-insensitive collision check above.
 What has to happen first, for a rename and for a delete alike, is `wineserver -k` against
 this prefix — see `runtime.md`, and note that the same command without `WINEPREFIX` goes
 after `~/.wine`, kills nothing of the user's and exits 0.
+
+### Which is why the titles added by hand live in the prefix
+
+`sake-titles.json`, at the root of the bottle, holds what somebody added to the library
+themselves — a name, the arguments, and the executable **relative to `drive_c`**. Nothing
+in it names the prefix, so it inherits everything the section above measured: a rename
+stays a `moveItem`, and throwing the bottle away takes its titles with it. Keeping the
+list under `~/Library/Sake` instead would make both of those an operation on two places
+that have to agree, which is the shape of bug that outlives the feature. Added 2026-09-20.
+
+Wine ignores what it does not recognise at a prefix's root — it keeps its own
+`.update-timestamp` there — and the titles sake ships knowledge of are not in the file at
+all: they are found by looking for their executable, so a bottle nobody has edited has no
+`sake-titles.json`.
 
 ## Importing a game costs nothing
 

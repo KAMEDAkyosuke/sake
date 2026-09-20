@@ -279,6 +279,65 @@ name. If a pad misbehaves, 2.30.12 is the version known-good under CrossOver and
 thing to bisect against. Not SDL3 — Wine looks for pkg-config's `sdl2` and `SDL_Init` in
 `libSDL2-2.0*`.
 
+## Killing wineserver leaves the prefix's own services running
+
+**Measured in sake on 2026-09-20.** A title was started from the library and stopped again.
+`wineserver -k` took down the game and the server, and then seven processes were still
+there, all reparented to ppid 1:
+
+```
+services.exe   winedevice.exe ×2   plugplay.exe
+svchost.exe -k LocalServiceNetworkRestricted   explorer.exe /desktop   rpcss.exe
+```
+
+They stayed for the rest of the session. Because they had been started by the app, macOS
+kept the app's LaunchServices record alive as `exited-with-subordinates` — so **the Dock
+went on showing a running sake for an app that had already quit**, which is how this was
+noticed at all.
+
+Six of the seven took `SIGTERM`; one `winedevice.exe` needed `SIGKILL`.
+
+### A mounted disk image does the same thing, and lasts longer
+
+The Wine processes above were found while chasing a Dock tile that would not go away, and
+they turned out not to be the whole answer. **An image sake mounted keeps its
+`diskimages-helper` running with ppid 1**, macOS counts that helper as a subordinate of the
+app that mounted it, and the app's LaunchServices record therefore stays at
+`exited-with-subordinates` — so the Dock shows a running sake for an app that quit hours
+ago, across every launch since.
+
+Measured 2026-09-20: the Game Porting Toolkit's evaluation-environment image had been
+mounted by the D3DMetal step at 12:27 and was still mounted at 13:30. Ejecting it took the
+helper with it and the tile disappeared from the Dock in the same second. `D3DMetalInstaller`
+now unmounts what it mounts; `licensing.md` says why that was always the intention.
+
+### Which prefix a process belongs to: the socket directory
+
+`ps` is no help — these spell themselves `C:\windows\system32\services.exe` and carry
+neither the engine's path nor the game's name, so a sweep looking for those two reports
+success with seven processes up. That was sake's bug, not just a gap in diagnosis.
+
+What does answer it is where wineserver keeps its socket:
+
+```
+/tmp/.wine-<uid>/server-<dev>-<inode>       both halves in hex
+bottle  dev=16777234 → 1000012   inode=141967053 → 8763ecd
+actual  /tmp/.wine-502/server-1000012-8763ecd
+```
+
+The two halves are the **prefix directory's own `st_dev` and `st_ino`**, confirmed against a
+live bottle on 2026-09-20. `lsof -t +D <that directory>` returned exactly those seven pids
+and nothing else — the clients hold the server's `tmpmap-*` shared memory open, so they are
+still found **after the server itself is gone**.
+
+Two things follow. An inode does not change when a directory is renamed, so this identifies
+a bottle's processes across a rename. And it is per prefix, so nothing here can reach a
+CrossOver bottle or another of sake's.
+
+`Bottle.takeDown` is the whole sequence: `wineserver -k`, then whatever is still in the
+prefix gets `SIGTERM`, then `SIGKILL`, then it is counted once more and **what is left is
+what gets reported** rather than an assumption of success.
+
 ## Telling failure states apart
 
 RSS alone misleads, and a hang and a slow start look nothing alike. Thread count separates
@@ -345,9 +404,9 @@ started. Cut `argv[0]` at its first `.exe` and check what that ends with.
   the Battle.net pid shows zero connections while it is talking to Blizzard happily. This
   produced three consecutive wrong network conclusions.
 - **`wineserver -k` silently targets `~/.wine` unless `WINEPREFIX` is set**, exits 0, and
-  reports success having killed nothing. Killing wineserver *is* how a bottle is taken
-  down — `Agent.exe` runs with ppid 1, wineserver is its own daemon, and Battle.net keeps a
-  fistful of CEF helpers.
+  reports success having killed nothing. It is the first half of taking a bottle down —
+  `Agent.exe` runs with ppid 1, wineserver is its own daemon, and Battle.net keeps a
+  fistful of CEF helpers — but **it is not the whole of it**, which is the next section.
 - **`WINEDEBUG=err+all` causes crashes rather than revealing them.** A failed `dlopen` of a
   missing dylib produces a `dlerror()` string long enough to overflow Wine's debug buffer;
   the exception cannot be dispatched and the process dies. Raising the log level turns a

@@ -73,7 +73,17 @@ unpatched build stalls flat at 12. `runtime.md` has both measurements and what t
 against; `licensing.md` has why `patches/` is not MIT. What is still unpressed is the Play
 button itself — the probe reproduces the check that button trips over, not the button.
 
-Still to come here: what else a title profile has to carry once a second one exists.
+**A game can be put in without CrossOver, as of 2026-09-20.** An installer the user
+supplies runs in a chosen bottle, and anything already in a bottle can be added to the
+library by hand — name, arguments, and the executable relative to `drive_c`, kept in
+`sake-titles.json` inside the prefix so that a rename and a delete stay what `layout.md`
+measured them to be. `licensing.md` has why sake runs an installer but never fetches one.
+**Nothing here has been run against a real game installer yet**: the evidence is the unit
+tests and a Windows program inside the bottle started as if it were one.
+
+Still to come here: what else a title profile has to carry once a second one exists. Launch
+arguments and process identification are still `Title.known`'s business for Battle.net, and
+a title added by hand gets neither.
 
 ### Phase 4 — the GUI proper (under way)
 
@@ -181,13 +191,14 @@ easier to read than it was interleaved with `configure` flags.
   those went away on 2026-09-19 — which directories to import is a difference, not a list —
   but launch arguments and process identification are still per-title, and one data point
   is thin.
-- **Nothing tells sake which prefix a running Wine process belongs to.** `ps` shows the
-  engine's path and the program's name and nothing about `WINEPREFIX`, which is why the
-  guard that refuses to rename a bottle with a game in it covers only what sake started
-  itself. The lead, noticed on 2026-09-19 and not followed: wineserver keeps its socket in
-  `/tmp/.wine-<uid>/server-<dev>-<inode>`, both halves in hex, and the `<dev>` half matches
-  this volume's. If the other half is the prefix directory's inode then that is the missing
-  answer, and it survives a rename because an inode does.
+- ~~**Nothing tells sake which prefix a running Wine process belongs to.**~~ **Answered
+  2026-09-20**: the other half of `/tmp/.wine-<uid>/server-<dev>-<inode>` is the prefix
+  directory's inode, and `lsof` against that directory names every process in the bottle —
+  including the ones `ps` describes only as `C:\windows\system32\services.exe`. An inode
+  survives a rename, so this holds across one. `runtime.md` has the measurement and what
+  it cost to find out. What is left of the question: the guard that refuses to rename a
+  bottle with a game in it still asks what sake started rather than asking the prefix, so
+  it is narrower than it now needs to be.
 - **`AppModel` has quietly become where decisions live, and the tests cannot reach it.**
   Whether a bottle may be renamed, which run a title's status belongs to, and what to forget
   after an uninstall are all judgements, and all in the app target — `scripts/test.sh` only

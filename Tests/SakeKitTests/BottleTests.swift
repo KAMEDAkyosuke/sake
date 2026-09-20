@@ -456,3 +456,47 @@ private func trash(in paths: Paths) -> (can: URL, trash: Trash) {
     // Its own name, trimmed to the same thing, is not a collision and not a move either.
     #expect(try await bottle.rename(to: " spare ").url == bottle.url)
 }
+
+@Test func aPrefixIsNamedByItsInodeSoARenameDoesNotLoseItsProcesses() throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    let bottle = Bottle(paths: paths)
+    try FileManager.default.createDirectory(at: bottle.url, withIntermediateDirectories: true)
+
+    // wineserver's socket directory is the only thing on the machine that says which
+    // prefix a Wine process belongs to. Measured against a live prefix on 2026-09-20.
+    let attributes = try FileManager.default.attributesOfItem(atPath: bottle.url.path)
+    let device = attributes[.systemNumber] as! Int
+    let inode = attributes[.systemFileNumber] as! Int
+    let expected = "/tmp/.wine-\(getuid())/server-"
+        + String(device, radix: 16) + "-" + String(inode, radix: 16)
+    #expect(bottle.serverDirectory?.path == expected)
+
+    // An inode does not move when a directory is renamed, which is what makes this work
+    // on a bottle somebody renamed while a game was running in it.
+    let renamed = Bottle(paths: paths, name: "renamed")
+    try FileManager.default.moveItem(at: bottle.url, to: renamed.url)
+    #expect(renamed.serverDirectory?.path == expected)
+}
+
+@Test func aPrefixThatIsNotThereHasNoProcessesAndNothingToKill() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+
+    // No prefix at all: there is no inode to name a socket directory with.
+    let missing = Bottle(paths: paths, name: "never-made")
+    #expect(missing.serverDirectory == nil)
+    #expect(await missing.processes().isEmpty)
+
+    // A prefix that exists but has never been run has an inode and no socket directory.
+    let bottle = Bottle(paths: paths)
+    try FileManager.default.createDirectory(at: bottle.url, withIntermediateDirectories: true)
+    #expect(bottle.serverDirectory != nil)
+    #expect(await bottle.processes().isEmpty)
+    #expect(await bottle.takeDown().isEmpty)
+    // It still went after the server, which is the half that needs WINEPREFIX set.
+    #expect(recorded("wineserver.args", in: paths) == ["-k"])
+}

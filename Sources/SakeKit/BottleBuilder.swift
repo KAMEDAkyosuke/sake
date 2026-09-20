@@ -211,6 +211,6 @@ public struct BottleBuilder: Sendable {
     private func takeDown() async {
         let bottle = self.bottle
         let runner = self.runner
-        await Task.detached { _ = try? await bottle.stop(runner: runner) }.value
+        await Task.detached { _ = await bottle.takeDown(runner: runner) }.value
     }
 }

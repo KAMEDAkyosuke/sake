@@ -37,13 +37,19 @@ wine/x86_64-windows/*.dll          the same six
 ```
 
 sake mounts the nested image with `hdiutil attach -nobrowse -readonly`, copies that tree into
-`~/Library/Caches/Sake/d3dmetal`, and copies it from there into the engine. Two things about
-that worth keeping:
+`~/Library/Caches/Sake/d3dmetal`, **unmounts it again**, and copies it from there into the
+engine. Unmounting is the point of keeping the copy: nothing afterwards needs the image, and
+an image left mounted follows the app around — `runtime.md` has what that cost. An image
+the user opened themselves is left alone; only what sake mounted is put back.
+Added 2026-09-20.
+
+Three things about that worth keeping:
 
 - **The PE half replaces Wine's own d3d10/d3d11/d3d12/dxgi.dll.** Apple's are a fifth to a
   third of the size and carry `D3DMetalDLLs` where Wine's import `vkd3d_*`, which is how sake
   checks the right ones are in place. Wine builds no unix-side `d3d*.so` at all, so only the
   PE half is ever undone.
+- **The image does not have to stay mounted, and must not.** See above.
 - **There is no `i386` directory.** D3DMetal is x86_64-only, so 32-bit processes get nothing
   from it. CrossOver fills that gap with DXVK and DXMT for i386; the d4-mac prototype did not,
   and covered the 32-bit GPU need with `--use-angle=vulkan` instead.
@@ -77,6 +83,17 @@ build, their licence, and in a bottle with D3DMetal in it, exactly the copy the 
 above says sake must never take. The import looks at `Program Files`, `Program Files (x86)`
 and `ProgramData` and at nothing else, so it is kept away from that directory by
 construction rather than by a filter someone could later relax.
+
+## Running an installer the user supplied
+
+The other way into a bottle is the game's own installer, and it stays on the same side of
+the line as the toolkit. **sake never fetches one.** Downloading a game's installer means
+accepting the terms of whoever made it, and that is the user's act — the same reason the
+D3DMetal step points at Apple's download page instead of reaching for it.
+
+What sake does is run a `.exe` or `.msi` the user already has, in the bottle they chose,
+with the environment `runtime.md` describes. The file stays where it is; nothing is copied
+into the app, and nothing about the installer is redistributed.
 
 ## Wine and the patches
 

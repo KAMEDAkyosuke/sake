@@ -85,7 +85,7 @@ public struct TitleLauncher: Sendable {
                         // Cancelling reaches `wine` and nothing else: the client's CEF
                         // helpers are not in its process group, Agent.exe runs with ppid 1,
                         // and wineserver is a daemon. See docs/runtime.md.
-                        await takeDown()
+                        await takeBottleDown()
                     } else {
                         continuation.yield(.failed(
                             reason: error.localizedDescription,
@@ -106,16 +106,26 @@ public struct TitleLauncher: Sendable {
     /// afterwards instead of trusting `wineserver -k`'s exit status, which is 0 either way.
     @discardableResult
     public func stop() async -> [String] {
-        _ = try? await bottle.stop(runner: runner)
-        // Killing wineserver does not take its clients down instantly.
-        try? await Task.sleep(for: .seconds(1))
-        return await survivors()
+        let left = await bottle.takeDown(runner: runner)
+        return await describe(left)
     }
 
-    /// Every `ps` line that belongs to this bottle: the title's own processes, and
-    /// wineserver.
+    /// What is still in the prefix, as `ps` lines.
+    ///
+    /// Asked of the prefix rather than of the title: measured on 2026-09-20, a run leaves
+    /// `services.exe` and five more behind that carry neither the title's name nor the
+    /// engine's path, so a sweep looking for those two reports success with seven
+    /// processes still up. See docs/runtime.md.
     public func survivors() async -> [String] {
-        Self.ours(in: await processTable(), program: title.program, engine: bottle.engine)
+        await describe(await bottle.processes(runner: runner))
+    }
+
+    private func describe(_ pids: [Int32]) async -> [String] {
+        guard !pids.isEmpty else { return [] }
+        let wanted = Set(pids.map(String.init))
+        return await processTable().filter { line in
+            wanted.contains(line.split(separator: " ").first.map(String.init) ?? "")
+        }
     }
 
     /// wineserver is matched on the engine root and the name rather than on
@@ -159,9 +169,9 @@ public struct TitleLauncher: Sendable {
 
     /// The task this runs in is already cancelled, and ``ProcessRunner`` refuses to start
     /// anything from a cancelled one.
-    private func takeDown() async {
+    private func takeBottleDown() async {
         let bottle = self.bottle
         let runner = self.runner
-        await Task.detached { _ = try? await bottle.stop(runner: runner) }.value
+        await Task.detached { _ = await bottle.takeDown(runner: runner) }.value
     }
 }

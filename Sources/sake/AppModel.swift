@@ -83,6 +83,21 @@ final class AppModel {
     /// than one; until then it follows whatever the library has selected.
     var importTarget = Bottle.defaultName
 
+    /// An installer the user downloaded, and which bottle it goes into. sake never
+    /// fetches one -- see docs/licensing.md.
+    var installer: URL?
+    var installTarget = Bottle.defaultName
+    var installStatus: InstallStatus?
+    var isInstalling = false
+
+    var isAddingTitle = false
+    var addTitleTarget = Bottle.defaultName
+    var addedTitleExecutable: URL?
+    var typedTitleName = ""
+    var typedTitleArguments = ""
+    /// Why the program that was picked cannot be a title, as a sentence from SakeKit.
+    var addTitleProblem: String?
+
     var isUninstalling = false
     var uninstallItems: [Uninstaller.Item] = []
     var uninstallSizes: [String: Int64] = [:]
@@ -106,6 +121,7 @@ final class AppModel {
     let creating = Run()
     let changingBottle = Run()
     let importing = Run()
+    let installingGame = Run()
     let playing = Run()
     let uninstalling = Run()
 
@@ -484,6 +500,99 @@ final class AppModel {
                 importStatus = .imported(count: cloned, bytes: bytes)
             }
         }
+    }
+
+    func beginInstall(into bottle: String) {
+        installTarget = bottle
+        installer = nil
+        installStatus = nil
+        isInstalling = true
+    }
+
+    func startInstall() {
+        guard let installer else { return }
+        let bottle = installTarget
+        installingGame.start({
+            let runner = InstallerRunner(paths: self.paths, name: bottle, installer: installer)
+            for await e in runner.run() { self.apply(e) }
+        }) {
+            // An installer that finished put something in the bottle, so what the library
+            // can start and what the bottle weighs are both out of date.
+            self.bottleSizes[bottle] = nil
+            self.survey()
+        }
+    }
+
+    /// Cancelling reaches `wine` and nothing else, so the bottle is taken down explicitly.
+    /// See docs/runtime.md.
+    func stopInstall() {
+        guard let installer else { return }
+        let bottle = installTarget
+        installingGame.stop()
+        Task {
+            let left = await InstallerRunner(
+                paths: paths, name: bottle, installer: installer
+            ).stop()
+            installStatus = .stopped(left: left.count)
+            survey()
+        }
+    }
+
+    private func apply(_ event: InstallEvent) {
+        switch event {
+        case .started: installStatus = .working(line: "")
+        case .output(let line): installStatus = .working(line: line)
+        case .exited(let status): installStatus = .exited(status: status)
+        case .failed(let reason, _): installStatus = .failed(reason)
+        case .finished: break
+        }
+    }
+
+    func beginAddTitle(into bottle: String) {
+        addTitleTarget = bottle
+        addedTitleExecutable = nil
+        typedTitleName = ""
+        typedTitleArguments = ""
+        addTitleProblem = nil
+        isAddingTitle = true
+    }
+
+    /// The name follows the program until somebody types over it, which is what makes the
+    /// common case one click and a Return.
+    func chooseTitleExecutable(_ url: URL) {
+        addedTitleExecutable = url
+        addTitleProblem = nil
+        if typedTitleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            typedTitleName = url.deletingPathExtension().lastPathComponent
+        }
+    }
+
+    func addTitle() {
+        guard let executable = addedTitleExecutable else { return }
+        let store = TitleStore(bottle: Bottle(paths: paths, name: addTitleTarget))
+        do {
+            let arguments = typedTitleArguments
+                .split(separator: " ")
+                .map(String.init)
+            try store.add(store.title(at: executable, named: typedTitleName, arguments: arguments))
+            addTitleProblem = nil
+            isAddingTitle = false
+            survey()
+        } catch {
+            addTitleProblem = error.localizedDescription
+        }
+    }
+
+    /// Only what was added by hand can be taken out of the library, and taking it out
+    /// leaves the game where it is: this is a list sake keeps, not the install.
+    func isRemovable(_ title: Title, in bottle: String) -> Bool {
+        TitleStore(bottle: Bottle(paths: paths, name: bottle)).contains(id: title.id)
+    }
+
+    func removeTitle(_ title: Title, from bottle: String) {
+        try? TitleStore(bottle: Bottle(paths: paths, name: bottle)).remove(id: title.id)
+        if selection == .title(bottle: bottle, id: title.id) { selection = .bottle(bottle) }
+        survey()
     }
 
     /// What uninstalling would take away, and what each piece occupies. The list is a

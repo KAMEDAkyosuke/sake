@@ -3,6 +3,7 @@ import Foundation
 public enum D3DMetalPhase: String, Sendable {
     case mount
     case `import`
+    case detach
     case install
     case colocate
     case verify
@@ -65,15 +66,18 @@ public struct D3DMetalInstaller: Sendable {
     private let paths: Paths
     private let runner: ProcessRunner
     private let volumes: URL
+    private let hdiutil: URL
 
     public init(
         paths: Paths = .default,
         runner: ProcessRunner = ProcessRunner(),
-        volumes: URL = URL(filePath: "/Volumes")
+        volumes: URL = URL(filePath: "/Volumes"),
+        hdiutil: URL = URL(filePath: "/usr/bin/hdiutil")
     ) {
         self.paths = paths
         self.runner = runner
         self.volumes = volumes
+        self.hdiutil = hdiutil
     }
 
     /// Where `libd3dshared.dylib` and the framework both have to end up, beside the `.so`
@@ -168,14 +172,27 @@ public struct D3DMetalInstaller: Sendable {
 
         if !isImported {
             onPhase(.mount)
-            let volume = try await mountedOrMountedNow()
+            let mount = try await mountedOrMountedNow()
 
-            onPhase(.import)
-            let redist = volume.appending(path: "redist/lib")
-            guard FileManager.default.fileExists(atPath: redist.path) else {
-                throw D3DMetalError.unexpectedLayout(volume: volume.path)
+            do {
+                onPhase(.import)
+                let redist = mount.volume.appending(path: "redist/lib")
+                guard FileManager.default.fileExists(atPath: redist.path) else {
+                    throw D3DMetalError.unexpectedLayout(volume: mount.volume.path)
+                }
+                try merge(redist, into: paths.d3dMetal, onPlaced: { _ in })
+            } catch {
+                if mount.attached {
+                    onPhase(.detach)
+                    await detach(mount.volume)
+                }
+                throw error
             }
-            try merge(redist, into: paths.d3dMetal, onPlaced: { _ in })
+
+            if mount.attached {
+                onPhase(.detach)
+                await detach(mount.volume)
+            }
         }
 
         onPhase(.install)
@@ -188,14 +205,16 @@ public struct D3DMetalInstaller: Sendable {
         try verify()
     }
 
-    private func mountedOrMountedNow() async throws -> URL {
-        if let volume = mountedVolume() { return volume }
+    /// `attached` is true only when this call did the mounting. An image the user opened
+    /// themselves is theirs to close.
+    private func mountedOrMountedNow() async throws -> (volume: URL, attached: Bool) {
+        if let volume = mountedVolume() { return (volume, false) }
 
         guard let image = nestedImage() else {
             throw D3DMetalError.notReady(missingPrerequisite ?? "The toolkit is not mounted.")
         }
         let result = try await runner.run(Command(
-            executable: URL(filePath: "/usr/bin/hdiutil"),
+            executable: hdiutil,
             arguments: ["attach", "-nobrowse", "-readonly", image.path]
         ))
         guard result.succeeded else {
@@ -207,7 +226,23 @@ public struct D3DMetalInstaller: Sendable {
         guard let volume = mountedVolume() else {
             throw D3DMetalError.mountedNothing(image: image.lastPathComponent)
         }
-        return volume
+        return (volume, true)
+    }
+
+    /// Put back what was mounted, because an image left mounted outlives the app.
+    ///
+    /// Its `diskimages-helper` keeps running with ppid 1, and macOS counts it as a
+    /// subordinate of whatever mounted it: the app's LaunchServices record stays at
+    /// `exited-with-subordinates` and **the Dock goes on showing a running sake after it
+    /// has quit**. Found that way on 2026-09-20; see docs/runtime.md.
+    ///
+    /// A failure here is not worth failing the step for: `redist/lib` is already in the
+    /// cache by this point, which was the job. `hdiutil detach` warns that it is deprecated
+    /// in favour of `diskutil eject` (macOS 27.0) and still does the work.
+    private func detach(_ volume: URL) async {
+        _ = try? await runner.run(Command(
+            executable: hdiutil, arguments: ["detach", volume.path]
+        ))
     }
 
     /// Matched as a prefix on both counts: the volume and the image carry the version, as in

@@ -59,7 +59,7 @@ public struct Uninstaller: Sendable {
                     for bottle in Bottle.all(in: paths) {
                         try Task.checkCancellation()
                         continuation.yield(.stopping(bottle: bottle.name))
-                        _ = try? await bottle.stop(runner: runner)
+                        _ = await bottle.takeDown(runner: runner)
                     }
 
                     for root in roots
