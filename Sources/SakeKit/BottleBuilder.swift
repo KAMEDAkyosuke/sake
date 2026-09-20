@@ -19,6 +19,7 @@ public enum BottleEvent: Sendable, Equatable {
 
 public enum BottleError: Error, Equatable, LocalizedError {
     case notReady(String)
+    case badName(String)
     case phaseFailed(phase: String, status: Int32, log: String)
     case registryMissing(at: String)
     case wow64Empty(at: String)
@@ -28,6 +29,8 @@ public enum BottleError: Error, Equatable, LocalizedError {
         switch self {
         case .notReady(let what):
             what
+        case .badName(let why):
+            why
         case .phaseFailed(let phase, let status, let log):
             "The bottle failed during \(phase) (exit \(status)). The full output is in \(log)."
         case .registryMissing(let at):
@@ -45,10 +48,13 @@ public enum BottleError: Error, Equatable, LocalizedError {
         }
     }
 
-    /// A missing prerequisite is caught before anything runs, so there is no log to point
-    /// at and nothing to take down.
+    /// A prerequisite that was missing, or a name that was refused, is caught before
+    /// anything runs -- so there is no log to point at and nothing to take down.
     var cameFromARun: Bool {
-        if case .notReady = self { false } else { true }
+        switch self {
+        case .notReady, .badName: false
+        case .phaseFailed, .registryMissing, .wow64Empty, .freeTypeUnresolved: true
+        }
     }
 }
 

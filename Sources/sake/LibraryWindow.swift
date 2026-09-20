@@ -57,6 +57,36 @@ struct LibraryWindow: View {
         .frame(minWidth: 620, minHeight: 380)
         .sheet(isPresented: $model.isImporting) { ImportSheet().environment(model) }
         .sheet(isPresented: $model.isCreatingBottle) { NewBottleSheet().environment(model) }
+        .sheet(isPresented: $model.isRenamingBottle) {
+            if let selected { RenameBottleSheet(bottle: selected).environment(model) }
+        }
+        .alert(
+            "Move “\(selected?.name ?? "")” to the Trash?",
+            isPresented: $model.isDeletingBottle,
+            presenting: selected
+        ) { bottle in
+            Button("Move to Trash", role: .destructive) { model.deleteBottle(bottle) }
+            Button("Cancel", role: .cancel) {}
+        } message: { bottle in
+            Text(whatDeletingCosts(bottle))
+        }
+        .alert(
+            "“\(selected?.name ?? "")” could not be moved to the Trash",
+            isPresented: trashRefused,
+            presenting: model.trashProblem
+        ) { _ in
+            if let selected {
+                Button("Delete Permanently", role: .destructive) {
+                    model.deleteBottle(selected, permanently: true)
+                }
+            }
+            Button("Cancel", role: .cancel) { model.trashProblem = nil }
+        } message: { reason in
+            Text("\(reason)\n\nDeleting it outright frees the space and cannot be undone.")
+        }
+        // A survey measures what it can, but clicking from one bottle to the next is not
+        // one of the things that causes a survey.
+        .onChange(of: model.selectedBottle) { model.measureSelectedBottle() }
         .task {
             await model.check()
             // First run lands here with nothing built, so the wizard opens itself rather
@@ -114,12 +144,16 @@ struct LibraryWindow: View {
                 )
             }
         case .bottle(let name):
-            if let bottle = model.bottles.first(where: { $0.name == name }) {
+            if let bottle = model.bottle(named: name) {
                 BottleDetail(
                     bottle: bottle,
                     titles: model.titles[name] ?? [],
+                    size: model.bottleSizes[name],
+                    problem: model.problem(with: name),
                     importCandidates: name == model.importTarget ? model.importCandidates.count : nil,
-                    importing: { model.beginImport(into: name) }
+                    importing: { model.beginImport(into: name) },
+                    renaming: { model.beginRename(bottle) },
+                    deleting: { model.isDeletingBottle = true }
                 )
             }
         case .none:
@@ -144,5 +178,29 @@ struct LibraryWindow: View {
 
     private var isReady: Bool {
         model.setup.isComplete(machineIsReady: model.machineIsReady)
+    }
+
+    private var selected: Bottle? { model.bottle(named: model.selectedBottle) }
+
+    private var trashRefused: Binding<Bool> {
+        Binding(get: { model.trashProblem != nil }, set: { if !$0 { model.trashProblem = nil } })
+    }
+
+    /// What a delete actually costs. The Trash keeps the bottle, so it can be undone — but
+    /// the space is not what the bottle's size says, because an imported game's blocks
+    /// belong to CrossOver's copy as well. See docs/layout.md.
+    private func whatDeletingCosts(_ bottle: Bottle) -> String {
+        let games = model.titles[bottle.name] ?? []
+        let holds = switch games.count {
+        case 0: "There is nothing in it but the Windows it was set up with."
+        case 1: "\(games[0].name) goes with it."
+        default: "\(games.map(\.name).formatted()) go with it."
+        }
+        let size = model.bottleSizes[bottle.name]?.formatted(.byteCount(style: .file))
+        return """
+            \(holds) You can put it back from the Trash — and emptying the Trash returns \
+            less than \(size ?? "its size"), because a game that came from CrossOver shares \
+            its blocks with CrossOver's own copy.
+            """
     }
 }

@@ -108,7 +108,19 @@ Nothing in `SakeKit` had to change to allow it: `BottleBuilder`, `BottleImporter
 disk and a way to say whether a typed name can be used, both of which are on `Bottle` and
 tested there rather than in the sheet that asks.
 
-Still to come: adding and editing titles, renaming or deleting a bottle, and uninstall.
+**Renaming and deleting one followed on 2026-09-19.** Both turned out to be directory
+operations, because nothing inside a prefix names the prefix — `layout.md` has what that was
+measured against. Both are methods on `Bottle` beside `stop()` rather than anything a caller
+assembles, for the reason `stop()` is: each has to take this prefix's wineserver down first,
+and the same command without a `WINEPREFIX` goes after `~/.wine` and exits 0.
+
+Deleting moves the bottle to the Trash. It can be undone, which is worth having for a bottle
+with a signed-in client in it, and it is honest about the one thing it cannot do: a bottle
+whose game was imported returns almost none of its size even once the Trash is emptied,
+because those blocks belong to the CrossOver install as well. `layout.md` has the figures,
+and the confirmation says so rather than quoting the size as a promise.
+
+Still to come: adding and editing titles, and uninstall.
 
 ## The Swift/subprocess boundary
 

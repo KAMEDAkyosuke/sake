@@ -61,6 +61,15 @@ final class AppModel {
     var bottleStatus: [String: BottleStatus] = [:]
     var isCreatingBottle = false
     var typedBottleName = ""
+    var isRenamingBottle = false
+    var typedRenameName = ""
+    var isDeletingBottle = false
+    /// Why the Trash would not take a bottle. Non-nil is the only way sake offers to remove
+    /// anything outright, and the user is told what the offer is before it appears.
+    var trashProblem: String?
+    /// What a bottle occupies, as it looks from outside. Keyed by name and filled only for
+    /// what is on screen: see ``measureSelectedBottle()``.
+    var bottleSizes: [String: Int64] = [:]
 
     var importSources: [CrossOverBottle] = []
     var importSource: CrossOverBottle?
@@ -85,6 +94,7 @@ final class AppModel {
     let buildingWine = Run()
     let installing = Run()
     let creating = Run()
+    let changingBottle = Run()
     let importing = Run()
     let playing = Run()
 
@@ -100,6 +110,15 @@ final class AppModel {
         case .title(let bottle, _): bottle
         case nil: nil
         }
+    }
+
+    func bottle(named name: String?) -> Bottle? {
+        name.flatMap { wanted in bottles.first { $0.name == wanted } }
+    }
+
+    /// What went wrong the last time something was done to this bottle, as a sentence.
+    func problem(with bottle: String) -> String? {
+        if case .failed(let reason) = bottleStatus[bottle] { reason } else { nil }
     }
 
     var selectedTitle: Title? {
@@ -203,6 +222,9 @@ final class AppModel {
             importTarget = selectedBottle ?? bottles.first?.name ?? Bottle.defaultName
         }
 
+        bottleSizes = bottleSizes.filter { name, _ in bottles.contains { $0.name == name } }
+        measureSelectedBottle()
+
         importSources = CrossOverBottle.available()
         if importSource == nil || !importSources.contains(where: { $0 == importSource }) {
             importSource = importSources.first
@@ -241,6 +263,51 @@ final class AppModel {
                 self.importTarget = name
             }
         }
+    }
+
+    /// Walked rather than remembered, and only for the one on screen: a bottle with a game
+    /// in it is a hundred gigabytes and tens of thousands of files to add up.
+    func measureSelectedBottle() {
+        guard let name = selectedBottle, bottleSizes[name] == nil, let bottle = bottle(named: name)
+        else { return }
+        Task {
+            let size = await Task.detached { DiskUsage.size(of: bottle.url) }.value
+            bottleSizes[name] = size
+        }
+    }
+
+    func beginRename(_ bottle: Bottle) {
+        typedRenameName = bottle.name
+        isRenamingBottle = true
+    }
+
+    /// The rename itself is a directory rename. What follows it is everything sake keys by
+    /// the name and the disk does not: the selection, the import target, the progress row
+    /// the wizard drew and the size already measured.
+    func renameBottle(_ bottle: Bottle, to typed: String) {
+        changingBottle.start({
+            do {
+                let renamed = try await bottle.rename(to: typed)
+                self.bottleStatus[renamed.name] = self.bottleStatus.removeValue(forKey: bottle.name)
+                self.bottleSizes[renamed.name] = self.bottleSizes.removeValue(forKey: bottle.name)
+                self.selection = .bottle(renamed.name)
+                self.importTarget = renamed.name
+            } catch {
+                self.bottleStatus[bottle.name] = .failed(error.localizedDescription)
+            }
+        }, then: survey)
+    }
+
+    func deleteBottle(_ bottle: Bottle, permanently: Bool = false) {
+        changingBottle.start({
+            do {
+                _ = try await bottle.remove(trash: permanently ? .permanent : .system)
+                self.bottleStatus[bottle.name] = nil
+                self.trashProblem = nil
+            } catch {
+                self.trashProblem = error.localizedDescription
+            }
+        }, then: survey)
     }
 
     func beginImport(into bottle: String) {
@@ -357,6 +424,7 @@ final class AppModel {
                 self.apply(e)
             }
         }) {
+            self.bottleSizes[self.importTarget] = nil
             self.survey()
             self.loadImportOffer()
         }

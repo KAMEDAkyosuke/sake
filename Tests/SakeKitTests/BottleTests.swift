@@ -319,3 +319,140 @@ private func phases(in events: [BottleEvent]) -> [BottlePhase] {
 
     #expect(Bottle.problem(withName: "testing", in: paths) == nil)
 }
+
+/// A trash that keeps what it is handed, so a test can look at it afterwards -- and so that
+/// running the tests does not fill the developer's own.
+private func trash(in paths: Paths) -> (can: URL, trash: Trash) {
+    let can = paths.root.appending(path: "trash")
+    return (can, Trash { url in
+        try FileManager.default.createDirectory(at: can, withIntermediateDirectories: true)
+        let landed = can.appending(path: url.lastPathComponent)
+        try FileManager.default.moveItem(at: url, to: landed)
+        return landed
+    })
+}
+
+@Test func aRenamedBottleIsTheSamePrefixUnderAnotherName() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    let game = Title.known[0]
+
+    _ = await collect(BottleBuilder(paths: paths).create())
+    let before = Bottle(paths: paths)
+    try FileManager.default.createDirectory(
+        at: game.directoryURL(in: before), withIntermediateDirectories: true
+    )
+    try Data().write(to: game.executableURL(in: before))
+
+    let after = try await before.rename(to: "old saves")
+
+    #expect(Bottle.all(in: paths).map(\.name) == ["old saves"])
+    #expect(after.url.path == paths.bottle(named: "old saves").path)
+    #expect(after.exists)
+    // Renaming is not a copy: what was in the prefix is in it still, and the registry the
+    // wineboot wrote is the same file.
+    #expect(Title.installed(in: after).map(\.id) == [game.id])
+    #expect(after.systemFileCounts() == (system32: 2, sysWoW64: 1))
+}
+
+@Test func aRenameThatOnlyChangesCaseIsStillARename() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths, name: "Spare").create())
+
+    // APFS is case-insensitive by default, so the new name already "exists" before the
+    // move. `moveItem` renames anyway -- measured 2026-09-19 -- and the bottle being
+    // renamed is excluded from the collision check so that this can be reached at all.
+    #expect(Bottle.problem(withName: "spare", in: paths) != nil)
+    #expect(Bottle.problem(withName: "spare", in: paths, renaming: "Spare") == nil)
+
+    let renamed = try await Bottle(paths: paths, name: "Spare").rename(to: "spare")
+
+    #expect(renamed.name == "spare")
+    #expect(Bottle.all(in: paths).map(\.name) == ["spare"])
+}
+
+@Test func renamingAndRemovingBothTakeTheBottleDownFirst() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths).create())
+    try FileManager.default.removeItem(at: paths.engine.appending(path: "bin/wineserver.prefixes"))
+
+    let renamed = try await Bottle(paths: paths).rename(to: "spare")
+    _ = try await renamed.remove(trash: trash(in: paths).trash)
+
+    // Both against the prefix they were given: `wineserver -k` without WINEPREFIX goes
+    // after ~/.wine, kills nothing of the user's and exits 0.
+    #expect(recorded("wineserver.prefixes", in: paths) == [
+        paths.bottle(named: "default").path, paths.bottle(named: "spare").path,
+    ])
+}
+
+@Test func aRemovedBottleGoesToTheTrashWholeRatherThanAway() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths, name: "spare").create())
+    _ = await collect(BottleBuilder(paths: paths).create())
+    let (can, trash) = trash(in: paths)
+
+    let landed = try await Bottle(paths: paths, name: "spare").remove(trash: trash)
+
+    #expect(landed?.path == can.appending(path: "spare").path)
+    #expect(Bottle.all(in: paths).map(\.name) == ["default"])
+    // Recoverable, which is the whole reason it is the Trash and not removeItem.
+    #expect(FileManager.default.fileExists(atPath: can.appending(path: "spare/system.reg").path))
+}
+
+@Test func aBottleCanBeThrownAwayWithNoEngineLeftToStopIt() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths).create())
+    try FileManager.default.removeItem(at: paths.engine)
+
+    // Nothing to kill is not a reason to refuse: a bottle outlives its engine.
+    let landed = try await Bottle(paths: paths).remove(trash: trash(in: paths).trash)
+
+    #expect(landed != nil)
+    #expect(Bottle.all(in: paths).isEmpty)
+}
+
+@Test func throwingTheDefaultBottleAwaySendsSetupBackToIt() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths).create())
+    let setup = Setup(paths: paths)
+
+    #expect(setup.state(of: .bottle, machineIsReady: true) == .done)
+
+    _ = try await Bottle(paths: paths).remove(trash: trash(in: paths).trash)
+
+    #expect(setup.state(of: .bottle, machineIsReady: true) == .ready)
+}
+
+@Test func aNameNoOneCouldHaveTypedIsRefusedByTheRenameItself() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    for name in [Bottle.defaultName, "spare"] {
+        _ = await collect(BottleBuilder(paths: paths, name: name).create())
+    }
+    let bottle = Bottle(paths: paths, name: "spare")
+
+    // The sheet checks too, but the check that matters is the one no caller can skip.
+    await #expect(throws: BottleError.badName("A bottle needs a name.")) {
+        try await bottle.rename(to: "  ")
+    }
+    await #expect(throws: BottleError.self) { try await bottle.rename(to: "a/b") }
+    await #expect(throws: BottleError.self) { try await bottle.rename(to: ".hidden") }
+    await #expect(throws: BottleError.self) { try await bottle.rename(to: "DEFAULT") }
+
+    #expect(Bottle.all(in: paths).map(\.name) == ["default", "spare"])
+    // Its own name, trimmed to the same thing, is not a collision and not a move either.
+    #expect(try await bottle.rename(to: " spare ").url == bottle.url)
+}

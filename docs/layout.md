@@ -44,6 +44,34 @@ Three names are refused, and one that looks like it should be is not:
   variable sake composes, and no shell ever sees it. Verified with a bottle called
   `old saves` on 2026-09-19.
 
+### So renaming one is renaming the directory
+
+**Nothing inside a prefix names the prefix.** Measured in sake on 2026-09-19, against a
+bottle with Battle.net and Diablo IV imported into it:
+
+- `system.reg`, `user.reg` and `userdef.reg` hold no path under `bottles/`, and neither does
+  any other file in the bottle outside `drive_c/windows`.
+- No symlink points back into the prefix; `dosdevices/c:` is `../drive_c`, relative.
+- The absolute symlinks that are there — `z:` to `/`, `d:` to whatever was mounted when the
+  bottle was made, and `Documents`, `Downloads`, `Music`, `Pictures` and `Videos` to the
+  user's own folders — all point out of the prefix, so a rename does not reach them.
+
+So a rename is `moveItem` and nothing else. Done through sake the same day: `spare` became
+`spare games`, the directory kept its inode (141074667), free space did not move, and
+Battle.net started in the renamed bottle four seconds later and pulled Blizzard's catalog
+down. That last part is how the running client is known to be in the renamed prefix rather
+than the other one — it wrote its logs there.
+
+**A change of case only is a rename too**, and one worth spelling out because the obvious
+guard against it is wrong. The volume is case-insensitive, so the new name already
+`fileExists` before the move; refusing on that would refuse a legal rename. `moveItem`
+performs it. What makes it reachable at all is excluding the bottle being renamed from the
+case-insensitive collision check above.
+
+What has to happen first, for a rename and for a delete alike, is `wineserver -k` against
+this prefix — see `runtime.md`, and note that the same command without `WINEPREFIX` goes
+after `~/.wine`, kills nothing of the user's and exits 0.
+
 ## Importing a game costs nothing
 
 A bottle with Diablo IV in it is 100 GB, and the same game is already in a CrossOver bottle
@@ -87,6 +115,35 @@ Two things constrain it:
 
 The first real import, on 2026-09-19: six entries, **100.31 GB in 0.4 seconds**, free space
 unchanged to within noise, and the source's 2,537 files hashing the same afterwards.
+
+## Removing a bottle returns almost nothing
+
+The other side of the clone, and the reason sake does not quote a bottle's size as space it
+is about to hand back.
+
+Deleting a bottle moves it to the Trash. On one volume that is a rename, so it is instant
+whatever the bottle holds, and it can be undone — worth having for a bottle with a signed-in
+client and a patched game in it. What it does not do is return the space; and emptying the
+Trash afterwards does not return much of it either.
+
+Measured in sake on 2026-09-19, on a bottle of 6,562 files that sake counted as 101.35 GB,
+one imported game in it:
+
+| | free on `/` |
+|---|---|
+| before the delete | 39,472,968 KB |
+| moved to the Trash | 39,498,044 KB |
+| Trash emptied | 41,392,852 KB |
+
+The delete itself returned nothing, as a rename should, and emptying returned **1.94 GB of
+101.35** — the prefix's own gigabyte and what the client wrote while it ran. The game's
+blocks are still CrossOver's install's, and it still has them. Removing 6,562 files took
+under a second.
+
+The 101.35 GB is `DiskUsage.size`: the sum of each file's allocated size, which counts a
+shared block in full here and counts it again over there. macOS offers no way to ask how
+much of a tree is unshared, so that number is an upper bound on what a delete returns, and
+the confirmation sheet presents it as one rather than as a promise.
 
 ## Why not Application Support
 

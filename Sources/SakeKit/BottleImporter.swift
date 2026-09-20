@@ -246,18 +246,5 @@ public struct BottleImporter: Sendable {
         return found
     }
 
-    private func size(of url: URL) -> Int64 {
-        let keys: [URLResourceKey] = [.fileAllocatedSizeKey, .isRegularFileKey]
-        guard let files = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys)
-        else { return 0 }
-
-        var total: Int64 = 0
-        for case let file as URL in files {
-            guard let values = try? file.resourceValues(forKeys: Set(keys)),
-                  values.isRegularFile == true, let bytes = values.fileAllocatedSize
-            else { continue }
-            total += Int64(bytes)
-        }
-        return total
-    }
+    private func size(of url: URL) -> Int64 { DiskUsage.size(of: url) }
 }

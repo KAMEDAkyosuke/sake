@@ -23,7 +23,8 @@ you were looking for something you can play today, this is not it yet.
 
 There are two windows: a library — a section per bottle, with whatever can be started in
 each — and a setup wizard that walks the six steps above one at a time. The wizard opens
-itself when setup is not finished.
+itself when setup is not finished. A bottle can be renamed or thrown away from the library;
+throwing one away moves it to the Trash, so it can be put back.
 
 What is here:
 
@@ -84,7 +85,7 @@ itself say so and carry their own date.
 | `docs/wine-build.md` | building Wine from CrossOver's sources; the flags that cannot be dropped |
 | `docs/runtime.md` | creating a prefix, the three settings that make games run, the Play-button root cause, controllers, and how to tell four failure states apart |
 | `docs/licensing.md` | what may and may not be redistributed, and why D3DMetal is unavoidable |
-| `docs/layout.md` | where files go, why importing a 100 GB game costs nothing, why nothing mutable lives in the app bundle, and what pins a built tree to its path |
+| `docs/layout.md` | where files go, why importing a 100 GB game costs nothing and removing it returns nothing either, why nothing mutable lives in the app bundle, and what pins a built tree to its path |
 
 ## Requirements (for what sake will do, once it does it)
 

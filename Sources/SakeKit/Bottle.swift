@@ -30,14 +30,17 @@ public struct Bottle: Sendable, Equatable {
         typed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// What is wrong with `typed` as a new bottle's name, as a sentence, or `nil` when
-    /// nothing is.
+    /// What is wrong with `typed` as a bottle's name, as a sentence, or `nil` when nothing
+    /// is. `renaming` is the name of the bottle being renamed, which does not count as
+    /// taking the name it already has.
     ///
     /// Spaces are deliberately allowed, although this repository has a standing rule against
     /// them in paths: that rule is about the engine, which is an autotools `--prefix` and
     /// word-splits out of `CPPFLAGS`. A bottle name reaches Wine as the value of `WINEPREFIX`
     /// in an environment sake composes, and never goes through a shell. See docs/layout.md.
-    public static func problem(withName typed: String, in paths: Paths = .default) -> String? {
+    public static func problem(
+        withName typed: String, in paths: Paths = .default, renaming current: String? = nil
+    ) -> String? {
         let name = proposedName(from: typed)
 
         if name.isEmpty { return "A bottle needs a name." }
@@ -48,7 +51,7 @@ public struct Bottle: Sendable, Equatable {
             return "A name starting with a dot would make a bottle you could not see."
         }
         if let taken = all(in: paths).first(where: {
-            $0.name.compare(name, options: .caseInsensitive) == .orderedSame
+            $0.name != current && $0.name.compare(name, options: .caseInsensitive) == .orderedSame
         }) {
             // Case-insensitively, because APFS is by default: "Default" and "default" would
             // be one directory and the second wineboot would run inside the first bottle.
@@ -139,5 +142,70 @@ public struct Bottle: Sendable, Equatable {
     @discardableResult
     public func stop(runner: ProcessRunner = ProcessRunner()) async throws -> CommandResult {
         try await runner.run(command("wineserver", ["-k"]))
+    }
+
+    /// Give the bottle another name, which is a directory rename and nothing else.
+    ///
+    /// Nothing inside a prefix names the prefix: measured on 2026-09-19, the three
+    /// registries carry no path into `bottles/`, no symlink points back in, and
+    /// `dosdevices/c:` is relative. See docs/layout.md.
+    public func rename(
+        to typed: String, runner: ProcessRunner = ProcessRunner()
+    ) async throws -> Bottle {
+        if let problem = Self.problem(withName: typed, in: paths, renaming: name) {
+            throw BottleError.badName(problem)
+        }
+        let renamed = Bottle(paths: paths, name: Self.proposedName(from: typed))
+        guard renamed.name != name else { return self }
+
+        try await stop(runner: runner)
+        // Including a change of case only, which `moveItem` handles although the volume is
+        // case-insensitive and reports the new name as already existing. A guard on that
+        // would refuse a legal rename; excluding this bottle from the collision check in
+        // ``problem(withName:in:renaming:)`` is what makes it reachable. Measured 2026-09-19.
+        try FileManager.default.moveItem(at: url, to: renamed.url)
+        return renamed
+    }
+
+    /// Take the bottle away, and say where it went.
+    ///
+    /// Stopped first for the reason ``stop()`` exists: wineserver outlives whatever started
+    /// it, and a bottle removed from under a running one is a live process writing into a
+    /// tree nobody can find.
+    @discardableResult
+    public func remove(
+        runner: ProcessRunner = ProcessRunner(), trash: Trash = .system
+    ) async throws -> URL? {
+        // `try?`: a bottle outlives its engine. With no `bin/wineserver` there is nothing
+        // to kill, and that must not be what stops somebody throwing the bottle away.
+        _ = try? await stop(runner: runner)
+        return try trash.take(url)
+    }
+}
+
+/// Where a removed bottle goes.
+///
+/// Injected for the reason ``ProcessRunner`` is: a test that used the real one would fill
+/// the developer's Trash.
+public struct Trash: Sendable {
+    let take: @Sendable (URL) throws -> URL?
+
+    public init(_ take: @escaping @Sendable (URL) throws -> URL?) {
+        self.take = take
+    }
+
+    /// macOS's own. On one volume it is a rename, so it costs nothing however large the
+    /// bottle -- and returns nothing either, until the Trash is emptied.
+    public static let system = Trash { url in
+        var trashed: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
+        return trashed as URL?
+    }
+
+    /// Not the Trash at all. Only ever reached after ``system`` has refused a bottle and
+    /// the user has been told why, because nothing here can be put back.
+    public static let permanent = Trash { url in
+        try FileManager.default.removeItem(at: url)
+        return nil
     }
 }
