@@ -23,16 +23,9 @@ struct InstallSheet: View {
             Text("Install from an Installer")
                 .font(.title2.weight(.semibold))
 
-            if model.bottles.count > 1 {
-                Picker("Into", selection: $model.installTarget) {
-                    ForEach(model.bottles, id: \.name) { bottle in
-                        Text(bottle.name).tag(bottle.name)
-                    }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                .disabled(model.installingGame.isRunning)
-            }
+            Text("Into \(model.installTarget)")
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
             HStack {
                 Button("Choose Installer…") { isChoosing = true }
@@ -68,6 +61,9 @@ struct InstallSheet: View {
                 if model.installingGame.isRunning {
                     Button("Stop", action: model.stopInstall)
                 } else {
+                    if case .exited = model.installStatus {
+                        Button("Add a Title…", action: model.addTitleAfterInstall)
+                    }
                     Button("Install", action: model.startInstall)
                         .keyboardShortcut(.defaultAction)
                         .disabled(model.installer == nil)

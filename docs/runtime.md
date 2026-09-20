@@ -54,6 +54,19 @@ Two things in a fresh bottle that a path in this document may not lead you to ex
 
 None is on by default, and no symptom resembles its cause.
 
+**Two of the three are sake's to apply and one is not.** `WINE_SIMULATE_WRITECOPY` and
+`CX_APPLEGPTK_LIBD3DSHARED_PATH` are environment, so `Bottle.environment` puts them on
+everything the engine runs. `--in-process-gpu` and the two ANGLE flags beside it are
+**Chromium's**, and mean something only to a program built on CEF — putting them on a game
+that reads its own `argv` is not free. sake therefore offers them when it can see it is
+dealing with a Chromium app, and otherwise leaves the arguments empty.
+
+What it looks for is `libcef.dll`, **beside the program or one directory below it**.
+Measured against a real Battle.net install on 2026-09-20: the exe is
+`Battle.net/Battle.net.exe` and its CEF build is `Battle.net/Battle.net.17821/libcef.dll`,
+so looking only beside the program finds nothing and the flags would never be offered for
+the one title that is known to need them.
+
 ### `WINE_SIMULATE_WRITECOPY=1` — or Battle.net never fetches the login page
 
 CodeWeavers' `CW Hack 22996`. With it, a page that has been `VirtualProtect`ed away from

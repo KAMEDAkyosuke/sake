@@ -87,7 +87,7 @@ public struct TitleStore: Sendable {
             .split(separator: "-")
             .joined(separator: "-")
         let base = slug.isEmpty ? "title" : slug
-        let taken = Set(load().map(\.id) + Title.known.map(\.id))
+        let taken = Set(load().map(\.id))
         guard taken.contains(base) else { return base }
         return (2...)
             .lazy

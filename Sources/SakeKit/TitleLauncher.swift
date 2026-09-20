@@ -44,7 +44,10 @@ public struct TitleLauncher: Sendable {
             return "There is no bottle to run it in yet. Create one first."
         }
         guard title.isInstalled(in: bottle) else {
-            return "\(title.name) is not in this bottle yet. Import it first."
+            return """
+                \(title.name) is not where it was when it was added: there is nothing at \
+                \(title.executable) in this bottle any more.
+                """
         }
         return nil
     }

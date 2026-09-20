@@ -103,9 +103,12 @@ list under `~/Library/Sake` instead would make both of those an operation on two
 that have to agree, which is the shape of bug that outlives the feature. Added 2026-09-20.
 
 Wine ignores what it does not recognise at a prefix's root — it keeps its own
-`.update-timestamp` there — and the titles sake ships knowledge of are not in the file at
-all: they are found by looking for their executable, so a bottle nobody has edited has no
-`sake-titles.json`.
+`.update-timestamp` there — and a bottle nobody has added anything to has no
+`sake-titles.json` at all.
+
+**This file is the whole of it.** sake has no titles of its own to merge with: a bottle
+shows what somebody added to it and nothing else, so the file is the answer rather than one
+half of it.
 
 ## Importing a game costs nothing
 

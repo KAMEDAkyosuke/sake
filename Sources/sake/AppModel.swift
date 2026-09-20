@@ -91,6 +91,11 @@ final class AppModel {
     var isInstalling = false
 
     var isAddingTitle = false
+    /// The title whose options are open, and the bottle it is in. Editing writes into that
+    /// bottle's own file, which is also how a built-in title is overridden.
+    var editingTitle: Title?
+    var editingTitleBottle = Bottle.defaultName
+    var isEditingTitle = false
     var addTitleTarget = Bottle.defaultName
     var addedTitleExecutable: URL?
     var typedTitleName = ""
@@ -548,6 +553,12 @@ final class AppModel {
         }
     }
 
+    /// The installer has closed; what it installed is what somebody wants to start next.
+    func addTitleAfterInstall() {
+        isInstalling = false
+        beginAddTitle(into: installTarget)
+    }
+
     func beginAddTitle(into bottle: String) {
         addTitleTarget = bottle
         addedTitleExecutable = nil
@@ -558,12 +569,48 @@ final class AppModel {
     }
 
     /// The name follows the program until somebody types over it, which is what makes the
-    /// common case one click and a Return.
+    /// common case one click and a Return. A Chromium app's flags come with it.
     func chooseTitleExecutable(_ url: URL) {
         addedTitleExecutable = url
         addTitleProblem = nil
         if typedTitleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             typedTitleName = url.deletingPathExtension().lastPathComponent
+        }
+        if typedTitleArguments.isEmpty {
+            typedTitleArguments = Title.suggestedArguments(for: url).joined(separator: " ")
+        }
+    }
+
+    func beginEditTitle(_ title: Title, in bottle: String) {
+        editingTitle = title
+        editingTitleBottle = bottle
+        typedTitleName = title.name
+        typedTitleArguments = title.arguments.joined(separator: " ")
+        addTitleProblem = nil
+        isEditingTitle = true
+    }
+
+    /// Saved into the bottle, whether it started as a built-in or not.
+    func saveEditedTitle() {
+        guard let title = editingTitle else { return }
+        let store = TitleStore(bottle: Bottle(paths: paths, name: editingTitleBottle))
+        let name = typedTitleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            addTitleProblem = TitleStoreError.unnamed.localizedDescription
+            return
+        }
+        let edited = Title(
+            id: title.id,
+            name: name,
+            executable: title.executable,
+            arguments: typedTitleArguments.split(separator: " ").map(String.init)
+        )
+        do {
+            try store.add(edited)
+            isEditingTitle = false
+            survey()
+        } catch {
+            addTitleProblem = error.localizedDescription
         }
     }
 

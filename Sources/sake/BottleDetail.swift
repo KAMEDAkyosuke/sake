@@ -15,6 +15,7 @@ struct BottleDetail: View {
     let importCandidates: Int?
     let importing: () -> Void
     let installing: () -> Void
+    let addingTitle: () -> Void
     let renaming: () -> Void
     let deleting: () -> Void
 
@@ -34,6 +35,9 @@ struct BottleDetail: View {
                     .controlSize(.large)
                 Button("Install from an Installer…", action: installing)
                     .controlSize(.large)
+                Button("Add a Title…", action: addingTitle)
+                    .controlSize(.large)
+                Spacer(minLength: 24)
                 Button("Rename…", action: renaming)
                     .controlSize(.large)
                 Button("Delete…", action: deleting)

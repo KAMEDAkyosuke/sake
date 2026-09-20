@@ -78,12 +78,23 @@ supplies runs in a chosen bottle, and anything already in a bottle can be added 
 library by hand — name, arguments, and the executable relative to `drive_c`, kept in
 `sake-titles.json` inside the prefix so that a rename and a delete stay what `layout.md`
 measured them to be. `licensing.md` has why sake runs an installer but never fetches one.
-**Nothing here has been run against a real game installer yet**: the evidence is the unit
-tests and a Windows program inside the bottle started as if it were one.
+**A real installer has been through it, on 2026-09-20**, run through the app by the person
+this was built for rather than by the machine that wrote it. `Battle.net-Setup.exe` is
+`PE32 … Intel 80386` — a 32-bit installer, which until then was only inferred to work
+from a populated `syswow64` — and it installed a client that is PE32 too. The run left a
+57 KB log under `build/`. What it does not say is whether that client plays anything: the
+Play button in it is still the thing nobody has pressed.
 
-Still to come here: what else a title profile has to carry once a second one exists. Launch
-arguments and process identification are still `Title.known`'s business for Battle.net, and
-a title added by hand gets neither.
+**sake ships no titles of its own, as of 2026-09-20.** It knew Battle.net once — an
+executable path, its flags, and a row that appeared when that path existed. What the row
+carried is now general: the flags come from looking for `libcef.dll` beside the program,
+and a process is recognised by the executable the title names. The cost is that a bottle is
+empty until somebody adds something to it, whether the game arrived from an installer or
+out of a CrossOver bottle.
+
+Still to come here: what else a title profile has to carry once a second one exists. One
+data point is still one data point, and nothing yet knows that starting Diablo IV directly
+fails on the token — `runtime.md` says so, the app does not.
 
 ### Phase 4 — the GUI proper (under way)
 

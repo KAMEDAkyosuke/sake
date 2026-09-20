@@ -19,6 +19,7 @@ struct TitleDetail: View {
     let blockedBy: String?
     let play: () -> Void
     let stop: () -> Void
+    let options: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -41,6 +42,8 @@ struct TitleDetail: View {
                         .keyboardShortcut(.defaultAction)
                         .disabled(blockedBy != nil)
                 }
+                Button("Options…", action: options)
+                    .controlSize(.large)
                 statusLine
             }
 

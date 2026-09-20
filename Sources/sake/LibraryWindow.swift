@@ -31,25 +31,15 @@ struct LibraryWindow: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 210)
             .safeAreaInset(edge: .bottom) {
-                Menu {
-                    Button("New Bottle…") { model.isCreatingBottle = true }
-                    Button("Import from CrossOver…") {
-                        model.beginImport(into: model.selectedBottle ?? Bottle.defaultName)
-                    }
-                    .disabled(model.bottles.isEmpty)
-                    Button("Install from an Installer…") {
-                        model.beginInstall(into: model.selectedBottle ?? Bottle.defaultName)
-                    }
-                    .disabled(model.bottles.isEmpty)
-                    Button("Add a Title…") {
-                        model.beginAddTitle(into: model.selectedBottle ?? Bottle.defaultName)
-                    }
-                    .disabled(model.bottles.isEmpty)
+                // Only what is about the library rather than about one bottle: putting a
+                // game in, or taking a bottle away, belongs to the bottle it happens to.
+                Button {
+                    model.isCreatingBottle = true
                 } label: {
-                    Label("Add", systemImage: "plus")
+                    Label("New Bottle…", systemImage: "plus")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .menuStyle(.borderlessButton)
+                .buttonStyle(.borderless)
                 .padding(10)
             }
         } detail: {
@@ -66,6 +56,7 @@ struct LibraryWindow: View {
         .sheet(isPresented: $model.isImporting) { ImportSheet().environment(model) }
         .sheet(isPresented: $model.isInstalling) { InstallSheet().environment(model) }
         .sheet(isPresented: $model.isAddingTitle) { AddTitleSheet().environment(model) }
+        .sheet(isPresented: $model.isEditingTitle) { TitleOptionsSheet().environment(model) }
         .sheet(isPresented: $model.isCreatingBottle) { NewBottleSheet().environment(model) }
         .sheet(isPresented: $model.isUninstalling) { UninstallSheet().environment(model) }
         .sheet(isPresented: $model.isRenamingBottle) {
@@ -161,7 +152,8 @@ struct LibraryWindow: View {
                     isRunning: model.runningTitle == run,
                     blockedBy: model.blocker(for: title, in: bottle),
                     play: { model.startTitle(title, in: bottle) },
-                    stop: model.stopTitle
+                    stop: model.stopTitle,
+                    options: { model.beginEditTitle(title, in: bottle) }
                 )
             }
         case .bottle(let name):
@@ -174,6 +166,7 @@ struct LibraryWindow: View {
                     importCandidates: name == model.importTarget ? model.importCandidates.count : nil,
                     importing: { model.beginImport(into: name) },
                     installing: { model.beginInstall(into: name) },
+                    addingTitle: { model.beginAddTitle(into: name) },
                     renaming: { model.beginRename(bottle) },
                     deleting: { model.isDeletingBottle = true }
                 )

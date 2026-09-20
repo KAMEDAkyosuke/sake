@@ -12,7 +12,15 @@ private func remove(_ paths: Paths) {
     try? FileManager.default.removeItem(at: paths.root.deletingLastPathComponent())
 }
 
-private let battleNet = Title.known[0]
+/// The client as somebody would have added it: the executable Battle.net installs, and
+/// the flags `suggestedArguments` offers for it. Every `ps` line below came from a real
+/// run of exactly this.
+private let battleNet = Title(
+    id: "battle-net",
+    name: "Battle.net",
+    executable: "Program Files (x86)/Battle.net/Battle.net.exe",
+    arguments: ["--use-gl=angle", "--use-angle=vulkan", "--in-process-gpu"]
+)
 
 /// An engine whose `wine` and `wineserver` record how they were called, and a bottle with
 /// the title installed in it.
@@ -53,6 +61,7 @@ private func makeEngineAndBottle(_ paths: Paths, installing title: Title? = batt
             at: executable.deletingLastPathComponent(), withIntermediateDirectories: true
         )
         try Data().write(to: executable)
+        try TitleStore(bottle: bottle).add(title)
     }
 }
 
@@ -158,13 +167,13 @@ private func collect(_ stream: AsyncStream<LaunchEvent>) async -> [LaunchEvent] 
     try makeEngineAndBottle(paths, installing: nil)
 
     let launcher = TitleLauncher(paths: paths, title: battleNet)
-    #expect(launcher.missingPrerequisite?.contains("Import it first") == true)
+    #expect(launcher.missingPrerequisite?.contains("is not where it was") == true)
 
     let events = await collect(launcher.launch())
     let failure = events.compactMap { event -> (String, URL?)? in
         if case .failed(let reason, let log) = event { (reason, log) } else { nil }
     }.first
-    #expect(failure?.0.contains("Import it first") == true)
+    #expect(failure?.0.contains("is not where it was") == true)
     // Nothing ran, so there is no log to send anyone to.
     #expect(failure?.1 == nil)
 }
@@ -260,24 +269,31 @@ private func collect(_ stream: AsyncStream<LaunchEvent>) async -> [LaunchEvent] 
     }
 }
 
-@Test func anAddedTitleNeverTakesAKnownTitlesIdentifier() throws {
-    let paths = temporaryRoot()
-    defer { remove(paths) }
-    try makeEngineAndBottle(paths)
+@Test func aChromiumAppIsRecognisedByItsLibcefWhereverItKeepsIt() throws {
+    let manager = FileManager.default
+    let root = manager.temporaryDirectory.appending(path: "sake-cef-\(UUID().uuidString)")
+    defer { try? manager.removeItem(at: root) }
 
-    let bottle = Bottle(paths: paths)
-    let store = TitleStore(bottle: bottle)
-    let executable = bottle.driveC.appending(path: "Other/Battle.net.exe")
-    try FileManager.default.createDirectory(
-        at: executable.deletingLastPathComponent(), withIntermediateDirectories: true
+    let chromium = ["--use-gl=angle", "--use-angle=vulkan", "--in-process-gpu"]
+
+    // Beside the program.
+    let beside = root.appending(path: "beside")
+    try manager.createDirectory(at: beside, withIntermediateDirectories: true)
+    try Data().write(to: beside.appending(path: "libcef.dll"))
+    #expect(Title.suggestedArguments(for: beside.appending(path: "App.exe")) == chromium)
+
+    // One directory below it, which is where Battle.net keeps its own: the exe sits in
+    // Battle.net/ and the CEF build in Battle.net/Battle.net.<build>/.
+    let below = root.appending(path: "below")
+    try manager.createDirectory(
+        at: below.appending(path: "App.17821"), withIntermediateDirectories: true
     )
-    try Data().write(to: executable)
+    try Data().write(to: below.appending(path: "App.17821/libcef.dll"))
+    #expect(Title.suggestedArguments(for: below.appending(path: "App.exe")) == chromium)
 
-    // "Battle.net" slugs to the id the known title already has, and a log file is named
-    // after it.
-    let title = try store.title(at: executable, named: "Battle.net")
-    #expect(title.id == "battle-net-2")
-
-    try store.add(title)
-    #expect(Title.installed(in: bottle) == [battleNet, title])
+    // A game carries no libcef, and Chromium's flags are not Wine's to put on everything.
+    let game = root.appending(path: "game")
+    try manager.createDirectory(at: game.appending(path: "Data"), withIntermediateDirectories: true)
+    #expect(Title.suggestedArguments(for: game.appending(path: "Game.exe")).isEmpty)
 }
+

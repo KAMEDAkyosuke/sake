@@ -265,7 +265,10 @@ private func phases(in events: [BottleEvent]) -> [BottlePhase] {
     let paths = temporaryRoot()
     defer { remove(paths) }
     try makeFakeEngine(in: paths)
-    let game = Title.known[0]
+    let game = Title(
+        id: "battle-net", name: "Battle.net",
+        executable: "Program Files (x86)/Battle.net/Battle.net.exe"
+    )
 
     for name in [Bottle.defaultName, "testing"] {
         _ = await collect(BottleBuilder(paths: paths, name: name).create())
@@ -276,6 +279,7 @@ private func phases(in events: [BottleEvent]) -> [BottlePhase] {
         at: game.directoryURL(in: first), withIntermediateDirectories: true
     )
     try Data().write(to: game.executableURL(in: first))
+    try TitleStore(bottle: first).add(game)
 
     #expect(first.url != second.url)
     #expect(Title.installed(in: first).map(\.id) == [game.id])
@@ -336,7 +340,10 @@ private func trash(in paths: Paths) -> (can: URL, trash: Trash) {
     let paths = temporaryRoot()
     defer { remove(paths) }
     try makeFakeEngine(in: paths)
-    let game = Title.known[0]
+    let game = Title(
+        id: "battle-net", name: "Battle.net",
+        executable: "Program Files (x86)/Battle.net/Battle.net.exe"
+    )
 
     _ = await collect(BottleBuilder(paths: paths).create())
     let before = Bottle(paths: paths)
@@ -344,14 +351,16 @@ private func trash(in paths: Paths) -> (can: URL, trash: Trash) {
         at: game.directoryURL(in: before), withIntermediateDirectories: true
     )
     try Data().write(to: game.executableURL(in: before))
+    try TitleStore(bottle: before).add(game)
 
     let after = try await before.rename(to: "old saves")
 
     #expect(Bottle.all(in: paths).map(\.name) == ["old saves"])
     #expect(after.url.path == paths.bottle(named: "old saves").path)
     #expect(after.exists)
-    // Renaming is not a copy: what was in the prefix is in it still, and the registry the
-    // wineboot wrote is the same file.
+    // Renaming is not a copy: what was in the prefix is in it still -- the game, the
+    // registry wineboot wrote, and the list of titles, which is why that list lives in
+    // the prefix at all.
     #expect(Title.installed(in: after).map(\.id) == [game.id])
     #expect(after.systemFileCounts() == (system32: 2, sysWoW64: 1))
 }

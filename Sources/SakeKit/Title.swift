@@ -39,29 +39,39 @@ public struct Title: Sendable, Hashable, Codable, Identifiable {
         FileManager.default.fileExists(atPath: executableURL(in: bottle).path)
     }
 
-    /// Diablo IV is deliberately not here. Started on its own it comes all the way up and
-    /// then fails on "Aurora has rejected the token": the client only hands a token out
-    /// after Play has been pressed in the same session, so a row here would be a Play
-    /// button that leads to an error. Pressing Play inside the client is what starts it,
-    /// and that is the Agent's job rather than sake's. See docs/runtime.md.
-    public static let known = [
-        Title(
-            id: "battle-net",
-            name: "Battle.net",
-            executable: "Program Files (x86)/Battle.net/Battle.net.exe",
-            arguments: ["--use-gl=angle", "--use-angle=vulkan", "--in-process-gpu"]
-        )
-    ]
-
-    /// What can be started in this bottle: the ones sake knows, then the ones somebody
-    /// added by hand, both filtered by what is actually there. A stored title cannot take
-    /// a known title's id -- ``TitleStore`` does not hand that id out -- so a duplicate
-    /// here would be a file edited by hand, and the known one wins.
+    /// What can be started in this bottle: what somebody added to it, filtered by what is
+    /// still there.
+    ///
+    /// sake ships no titles of its own. It knew one game once, which meant a row appeared
+    /// for that one and for nothing else; what the row carried -- the Chromium flags -- is
+    /// now ``suggestedArguments(for:)``, which answers for any program rather than for one.
     public static func installed(in bottle: Bottle) -> [Title] {
-        let known = known.filter { $0.isInstalled(in: bottle) }
-        let ids = Set(known.map(\.id))
-        let added = TitleStore(bottle: bottle).load()
-            .filter { !ids.contains($0.id) && $0.isInstalled(in: bottle) }
-        return known + added
+        TitleStore(bottle: bottle).load().filter { $0.isInstalled(in: bottle) }
+    }
+
+    /// The flags a Chromium app needs here, or nothing at all.
+    ///
+    /// `--use-gl=angle --use-angle=vulkan` and `--in-process-gpu` are Chromium's, not
+    /// Wine's: they mean something to a CEF app and nothing to a game, which is why they
+    /// are not simply put on everything the way the two environment variables in
+    /// `Bottle.environment` are. See docs/runtime.md.
+    ///
+    /// **`libcef.dll` is looked for one directory down as well as beside the program.**
+    /// Battle.net's own exe sits in `Battle.net/` and its CEF build in
+    /// `Battle.net/Battle.net.<build>/`, so beside-only finds nothing. Measured against a
+    /// real install on 2026-09-20.
+    public static func suggestedArguments(for executable: URL) -> [String] {
+        let chromium = ["--use-gl=angle", "--use-angle=vulkan", "--in-process-gpu"]
+        let directory = executable.deletingLastPathComponent()
+        let manager = FileManager.default
+        if manager.fileExists(atPath: directory.appending(path: "libcef.dll").path) {
+            return chromium
+        }
+        let entries = (try? manager.contentsOfDirectory(atPath: directory.path)) ?? []
+        for entry in entries {
+            let below = directory.appending(path: entry).appending(path: "libcef.dll")
+            if manager.fileExists(atPath: below.path) { return chromium }
+        }
+        return []
     }
 }

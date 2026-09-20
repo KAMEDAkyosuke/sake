@@ -20,17 +20,9 @@ struct ImportSheet: View {
             Text("Import from CrossOver")
                 .font(.title2.weight(.semibold))
 
-            if model.bottles.count > 1 {
-                Picker("Into", selection: $model.importTarget) {
-                    ForEach(model.bottles, id: \.name) { bottle in
-                        Text(bottle.name).tag(bottle.name)
-                    }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                .disabled(model.importing.isRunning)
-                .onChange(of: model.importTarget) { model.loadImportOffer() }
-            }
+            Text("Into \(model.importTarget)")
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
             if model.importSources.count > 1 {
                 Picker("From", selection: $model.importSource) {

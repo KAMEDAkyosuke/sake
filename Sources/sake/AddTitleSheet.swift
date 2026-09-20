@@ -16,15 +16,9 @@ struct AddTitleSheet: View {
             Text("Add a Title")
                 .font(.title2.weight(.semibold))
 
-            if model.bottles.count > 1 {
-                Picker("In", selection: $model.addTitleTarget) {
-                    ForEach(model.bottles, id: \.name) { bottle in
-                        Text(bottle.name).tag(bottle.name)
-                    }
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-            }
+            Text("In \(model.addTitleTarget)")
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
             HStack {
                 Button("Choose Program…") { isChoosing = true }
