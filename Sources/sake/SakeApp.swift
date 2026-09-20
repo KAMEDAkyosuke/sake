@@ -28,6 +28,11 @@ struct SakeApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: 760, height: 560)
+        // Both of these are macOS 15.0+, which is this app's deployment floor, so neither
+        // needs an availability guard. Without the first, the scene is presented at launch
+        // whatever the state of setup is, and the wizard comes up with nothing to do.
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
     }
 }
 
