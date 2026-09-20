@@ -177,8 +177,9 @@ private func failureReason(in events: [D3DMetalEvent]) -> String? {
     defer { fixture.remove() }
     _ = await collect(fixture.installer.install())
 
-    // Wine's `make install` writes its own d3d11/d3d12/dxgi back over Apple's, so this is
-    // the state a rebuild leaves behind. The image is gone by now.
+    // An engine with no lib at all and the image unmounted: what this is about is that the
+    // cached copy is enough on its own. What a rebuild really leaves is narrower, and has
+    // its own test below.
     try FileManager.default.removeItem(at: fixture.paths.engine.appending(path: "lib"))
     try FileManager.default.removeItem(
         at: fixture.volumes.appending(path: "\(GamePortingToolkit.innerVolumePrefix) 4.0 beta 2")
@@ -192,6 +193,27 @@ private func failureReason(in events: [D3DMetalEvent]) -> String? {
         if case .phase(let phase) = event { phase } else { nil }
     }
     #expect(phases == [.install, .colocate, .verify])
+    #expect(fixture.installer.isInstalled)
+}
+
+@Test func aWineRebuildUndoesTheInstallWithoutTouchingTheFramework() async throws {
+    let fixture = try makeFixture()
+    defer { fixture.remove() }
+    _ = await collect(fixture.installer.install())
+    #expect(fixture.installer.isInstalled)
+
+    // Exactly what `make install` does, and nothing else: the framework stays where it is.
+    // Checked for on its own it reads as a finished step, on an engine that cannot run a
+    // DX12 game -- which is what happened on a real rebuild on 2026-09-19.
+    for name in D3DMetalInstaller.appleOwnedDLLs {
+        let dll = fixture.paths.engine.appending(path: "lib/wine/x86_64-windows/\(name)")
+        try Data("vkd3d_create_device".utf8).write(to: dll)
+    }
+
+    #expect(FileManager.default.fileExists(atPath: fixture.paths.d3dMetalFramework.path))
+    #expect(!fixture.installer.isInstalled)
+
+    _ = await collect(fixture.installer.install())
     #expect(fixture.installer.isInstalled)
 }
 

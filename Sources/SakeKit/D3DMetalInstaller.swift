@@ -95,9 +95,25 @@ public struct D3DMetalInstaller: Sendable {
         FileManager.default.fileExists(atPath: importedFramework.path)
     }
 
+    /// The engine's DX12 stack being Apple's, which is a different question from D3DMetal
+    /// having been installed once.
+    ///
+    /// Wine's `make install` writes all four DLLs back over Apple's and does not touch the
+    /// framework, so checking for the framework alone reports a finished step on an engine
+    /// that cannot run a DX12 game. Measured in sake on 2026-09-19; see docs/wine-build.md.
     public var isInstalled: Bool {
         FileManager.default.fileExists(atPath: paths.d3dMetalFramework.path)
             && FileManager.default.fileExists(atPath: unixFramework.appending(path: "D3DMetal").path)
+            && Self.appleOwnedDLLs.allSatisfy { isApples(windowsDLL(named: $0)) }
+    }
+
+    private var windowsDLLs: URL { paths.engine.appending(path: "lib/wine/x86_64-windows") }
+
+    private func windowsDLL(named name: String) -> URL { windowsDLLs.appending(path: name) }
+
+    private func isApples(_ dll: URL) -> Bool {
+        guard let data = try? Data(contentsOf: dll, options: .mappedIfSafe) else { return false }
+        return data.range(of: Data(Self.appleMarker.utf8)) != nil
     }
 
     public var missingPrerequisite: String? {
@@ -260,14 +276,8 @@ public struct D3DMetalInstaller: Sendable {
             throw D3DMetalError.frameworkUnresolved(at: binary.path)
         }
 
-        let windows = paths.engine.appending(path: "lib/wine/x86_64-windows")
-        for name in Self.appleOwnedDLLs {
-            let dll = windows.appending(path: name)
-            guard let data = try? Data(contentsOf: dll, options: .mappedIfSafe),
-                  data.range(of: Data(Self.appleMarker.utf8)) != nil
-            else {
-                throw D3DMetalError.notApplesLibrary(name: name)
-            }
+        for name in Self.appleOwnedDLLs where !isApples(windowsDLL(named: name)) {
+            throw D3DMetalError.notApplesLibrary(name: name)
         }
     }
 

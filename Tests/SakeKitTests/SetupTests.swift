@@ -37,6 +37,13 @@ private func finish(_ step: SetupStep, in paths: Paths) throws {
     case .d3dMetal:
         try touch(paths.d3dMetalFramework.appending(path: "D3DMetal"))
         try touch(paths.wineUnixLibraries.appending(path: "D3DMetal.framework/D3DMetal"))
+        // The four DLLs are as much of what this step produces as the framework is, and
+        // the only half a Wine rebuild can undo.
+        for name in D3DMetalInstaller.appleOwnedDLLs {
+            let dll = paths.engine.appending(path: "lib/wine/x86_64-windows/\(name)")
+            try touch(dll)
+            try Data(D3DMetalInstaller.appleMarker.utf8).write(to: dll)
+        }
     case .bottle:
         try touch(Bottle(paths: paths).systemRegistry)
     }

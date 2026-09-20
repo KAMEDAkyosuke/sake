@@ -6,9 +6,9 @@ Everything here was learned in the d4-mac prototype between 2026-08 and 2026-09-
 machine (Apple silicon, macOS 27.0), unless a section says otherwise. **sake produced the
 nine components below and then built Wine itself on 2026-09-19** — configure, the soname
 rewrite, make and install, 4m40s for Wine on ten cores, 1.1 GB of engine. Later the same day
-it created a prefix with that engine and Wine came up clean; see `runtime.md`. What it has
-not run is a game. Treat anything not marked as sake's own measurement as the specification
-the implementation has to satisfy rather than a report on its behaviour.
+it created a prefix with that engine and Wine came up clean, and later still a game started
+in it; `runtime.md` has both. Treat anything not marked as sake's own measurement as the
+specification the implementation has to satisfy rather than a report on its behaviour.
 
 ## Why CrossOver's sources and not upstream Wine
 
@@ -112,18 +112,22 @@ clang is *not* required; the Mach-O side builds with stock Apple clang.
 - **`make install` overwrites D3DMetal.** It puts Wine's own `d3d10`/`d3d11`/`d3d12`/`dxgi.dll`
   back, so installing D3DMetal has to happen *after* every `make install`, not once. sake keeps
   its own copy of Apple's `redist/lib`, so putting it back is one press and does not need the
-  toolkit mounted again — but **nothing in the code calls it**.
+  toolkit mounted again. Nothing re-runs it on its own; what the code does is stop claiming
+  the step is finished, so the wizard sends the user there.
 
   This section used to say that deleting the whole engine was the only way to re-run `make
   install`, so D3DMetal went with it and the next install put it back. That is wrong.
   Measured in sake on 2026-09-19: deleting `engine/bin/wine` alone is enough to make the
   wizard rebuild, and afterwards all four DLLs were Wine's — while the D3DMetal step still
-  read **"already installed"**, because `isInstalled` checks for the framework and the
-  framework is what `make install` does not touch. So the failure is silent, and the engine
-  it leaves cannot run a DX12 game. Re-installing by hand fixed it, and both patches were
-  measured on an engine put back that way. **`D3DMetalInstaller.appleOwnedDLLs` and
-  `appleMarker` already name exactly what to check for; `isInstalled` just does not use
-  them.**
+  read **"already installed"**, because it asked whether the framework was there and the
+  framework is what `make install` does not touch. Silent, and the engine it left could not
+  run a DX12 game.
+
+  **`isInstalled` now asks whether the four DLLs are Apple's**, which is the question
+  `verify()` had been asking all along, so a Wine rebuild drops the D3DMetal step back to
+  unfinished and the wizard opens on it. Measured the same day, on the real engine and
+  through the app: with one DLL swapped for Wine's own the wizard opened on D3DMetal and
+  its row read "waiting", and one press put the engine back.
 - **Sonames must not be leaf names.** A leaf name resolves only through
   `DYLD_LIBRARY_PATH`, and that does not reach Wine's child processes. sake rewrites the
   four in `include/config.h` to `@loader_path`-relative paths between configure and make;

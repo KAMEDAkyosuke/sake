@@ -125,11 +125,11 @@ easier to read than it was interleaved with `configure` flags.
   gnutls only when something asks for TLS, and nothing has yet. See `layout.md`. (This used
   to be the whole question of whether Wine could load any of them, and path length before
   that. Both went away.)
-- **A built engine does not pick up a patch, or D3DMetal.** `bin/wine` existing is what says
-  the Wine step is done, so changing a patch needs that deleted. Worse, deleting it and
-  rebuilding silently replaces Apple's four DX12 DLLs with Wine's while the D3DMetal step
-  still reads "already installed" — measured 2026-09-19, see `wine-build.md`. Both are the
-  same missing thing: nothing in sake knows what a rebuild invalidates.
+- **A built engine does not pick up a change to a patch.** `bin/wine` existing is what says
+  the Wine step is done, so changing something in `patches/` means deleting that by hand and
+  rebuilding. The D3DMetal half of this went away on 2026-09-19 — a rebuild now drops that
+  step back to unfinished, because it asks whether the DLLs are Apple's rather than whether
+  the framework is there — but nothing yet knows that a patch has changed under it.
 - **How much to generalise beyond one title.** The prototype hard-coded Diablo IV in several
   places (launch arguments, process identification, which directories to import). One of
   those went away on 2026-09-19 — which directories to import is a difference, not a list —
