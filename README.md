@@ -1,18 +1,18 @@
 # sake
 
-Run Windows games on an Apple silicon Mac, by building CrossOver's Wine from CodeWeavers'
-published LGPL sources — with a GUI, so it does not take a terminal.
+An open source macOS app for running Windows games on Apple silicon — MIT-licensed, with a
+GUI, so none of it takes a terminal.
 
-## Status: you can play
+## Status
 
-Diablo IV ran on 2026-09-20, in a bottle sake made that afternoon: the Battle.net client
-installed by its own installer inside that bottle, signed in, Play pressed in the client,
-and the game playable with the keyboard and mouse. **No CrossOver was involved at any
-point** — that route exists, and this was not it.
+Playing here now:
 
-One person, one game, one Mac (Apple silicon, macOS 27.0), one afternoon. Everything in this
-repository that claims to have been measured says where and when; nothing here has been run
-on a second machine.
+- **Diablo IV**
+- **Steam**
+
+I wrote sake to play those two, and that is as far as it has been taken — one person, one
+Mac. If you get something else running with it I would like to hear about it, and if you
+cannot, that is worth hearing too.
 
 ## What it does
 
@@ -20,17 +20,12 @@ The app answers whether this Mac can do the rest — Apple silicon, Rosetta 2, t
 Line Tools, Apple's Game Porting Toolkit, room on disk — then walks six steps, one screen
 at a time:
 
-1. download the eleven sources and check them against known hashes
+1. download the sources and check them against known hashes
 2. unpack them and build the tools and libraries Wine is configured against
-3. build CrossOver's Wine itself, with the two patches in `patches/`
+3. build CrossOver's Wine itself, with the patches in `patches/`
 4. guide Apple's D3DMetal in from an image you mounted, and unmount it again
 5. make a bottle — one Wine prefix, which is where a game lives
-6. put a game in it
-
-There are two ways in for step 6, and neither needs anything sake is not allowed to give
-you: run the game's own installer, which you downloaded, inside the bottle; or clone a game
-you already installed under CrossOver, which costs no disk space because it is an APFS
-clone.
+6. put a game in it — its own installer, the one you downloaded, runs inside the bottle
 
 After that the library is where you live. A bottle holds titles you added; a title is a
 program in that bottle, its name, and the arguments it starts with. Picking a program that
@@ -72,28 +67,16 @@ Open the app. The setup wizard comes up when the six steps are not finished and 
 the way when they are. It runs for tens of minutes, mostly compiling, and sends you to
 Apple's download page once, for the toolkit.
 
-When it is done, the library has a bottle in it. Select the bottle and you get the two ways
-to put a game in, plus Rename and Delete. Once the game is installed, **Add a Title…** is
-what puts it in the library: pick its `.exe` inside the bottle, keep or change the arguments
-that were filled in, and it appears with a Play button.
+When it is done, the library has a bottle in it. Select the bottle and **Install from an
+Installer…** runs the game's installer inside it, with Rename and Delete alongside. Once
+the game is installed, **Add a Title…** is what puts it in the library: pick its `.exe`
+inside the bottle, keep or change the arguments that were filled in, and it appears with a
+Play button.
 
 For a launcher like Battle.net, start the launcher and press Play inside it. sake
 deliberately does not offer a button that starts Diablo IV directly: the client only hands
 out a login token after that press, so a direct start reaches the game and then fails on the
 token. `docs/runtime.md` has the measurements behind that.
-
-## What has not been checked
-
-- **One game, one Mac, one afternoon.** Nothing here has run on a second machine, a second
-  macOS version, or a second game.
-- **Controllers, sound and frame rate.** The prototype this grew out of played with a Switch
-  Pro Controller over USB on 2026-09-17, and needed SDL2 for it; sake has not written down a
-  controller run of its own. Sound and performance are not measured anywhere in here.
-- **A download.** Nobody has fetched a zip of this and opened it on another Mac, so what
-  Gatekeeper does with one is unverified.
-- **Anything in `docs/` marked as the prototype's.** Much of what is written down was
-  measured in a pile of shell scripts before sake existed; those sections say so and carry
-  their own dates.
 
 ## Why build Wine at all
 
@@ -113,7 +96,7 @@ unmounts it again. See `docs/licensing.md`.
 |---|---|
 | `Sources/SakeKit/` | the layout, a subprocess runner, the preflight checks, the source fetcher, the prefix build, the Wine build, the patch step, the D3DMetal step, the bottle, the import, the installer, the titles, starting one, how big a tree is, and the uninstall |
 | `Sources/sake/` | the SwiftUI app — two windows, kept thin |
-| `patches/` | the two changes sake makes to Wine's own code — LGPL-2.1-or-later, not MIT |
+| `patches/` | the changes sake makes to Wine's own code — LGPL-2.1-or-later, not MIT; `patches/README.md` says where each came from |
 | `docs/` | how the thing actually has to work, and what breaks when it doesn't |
 | `assets/` | the app icon, and the code that draws it |
 | `scripts/build-app.sh` | builds `target/Sake.app` |
