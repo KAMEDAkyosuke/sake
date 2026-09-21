@@ -112,6 +112,7 @@ implementing anything it covers.
 | `docs/runtime.md` | the three settings games need, the Play-button root cause, controllers, failure states |
 | `docs/licensing.md` | what may not be redistributed, and what the app may not do for the user |
 | `docs/layout.md` | on-disk layout, why nothing mutable goes in the bundle, relocatability |
+| `docs/releasing.md` | how a release is cut, and the three things it needs that are not in this repository |
 
 Two standing rules about that content:
 

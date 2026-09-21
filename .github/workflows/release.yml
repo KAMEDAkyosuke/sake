@@ -114,14 +114,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # The sha256 comes from the build rather than from a download of the release: this
-      # repository is private, and an unauthenticated curl of its asset gets a 404.
+      # The sha256 comes from the build rather than from a download of the release: the
+      # file is already here, and fetching it back could race the asset appearing.
       - name: Dispatch to the tap
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_DISPATCH_TOKEN }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "No HOMEBREW_DISPATCH_TOKEN; the tap does not exist yet. Skipping."
+            echo "No HOMEBREW_DISPATCH_TOKEN; skipping the cask update."
             exit 0
           fi
           gh api repos/typester/homebrew-sake/dispatches \

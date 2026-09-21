@@ -1,0 +1,56 @@
+# Releasing
+
+Measured on 2026-09-21, cutting v0.1.0 — the first release, and the first run of every step
+below.
+
+## What happens
+
+A push to `main` runs `Release`. `release-please` reads the Conventional Commits since the
+last release and, if any of them moves the version, opens or updates a release pull request
+carrying `VERSION` and `CHANGELOG.md`. Merging that pull request is the release: the same
+workflow tags `v{VERSION}`, creates the GitHub release, builds the app, attaches
+`Sake-arm64-{VERSION}.zip`, and sends the version and the zip's sha256 to
+`typester/homebrew-sake`, whose own workflow rewrites the cask. Nobody tags by hand.
+
+## Three things that make it work and are not in this repository
+
+- **Actions must be allowed to open pull requests.** Settings → Actions → General →
+  "Allow GitHub Actions to create and approve pull requests", or `gh api -X PUT
+  repos/typester/sake/actions/permissions/workflow -F can_approve_pull_request_reviews=true`.
+  It is off by default, and release-please does all of its work before hitting it: it
+  creates the branch, writes the commit, and then fails the run with `GitHub Actions is not
+  permitted to create or approve pull requests`, leaving a branch and no pull request.
+  Turning it on and re-running the failed job carries on from there. v0.1.0 was cut that
+  way, on 2026-09-21.
+- **`HOMEBREW_DISPATCH_TOKEN`**, a repository secret with `contents: write` on the tap.
+  Without it the cask job skips itself and says so in the log.
+- **`CERTIFICATE_P12` and `CERTIFICATE_PASSWORD`**, which are optional. Without them the app
+  is ad-hoc signed, which is what v0.1.0 is. That branch has never run with a certificate.
+
+## A first release needs a commit that asks for one
+
+release-please proposes a version only after a `feat:` or a `fix:`. To cut a release without
+one — the first, or a re-release — put `Release-As: 0.1.0` in a commit body on `main`. That
+is what v0.1.0 was cut with. It is the one footer this repository writes.
+
+## After the tag exists, there is no undo
+
+The tag and the release are public the moment release-please makes them, so a build that
+fails afterwards leaves a release with nothing attached. `release.yml` takes a
+`workflow_dispatch` with a tag name for that case: it builds against the tag and attaches
+the app to the release that is already there. The tap has the same escape hatch, taking a
+version and a sha256.
+
+The tap checks that the url resolves before it commits, so a cask is never published
+pointing at an asset that is not there.
+
+## Not verified
+
+- **Nobody has installed the cask**, here or anywhere. `brew fetch --cask sake` downloaded
+  v0.1.0 and the checksum matched; there was no install, no first launch, and so nothing
+  has seen what Gatekeeper does with an ad-hoc signature that arrived through brew.
+- `brew audit --cask --online` has not been run: Homebrew refuses to start on the machine
+  this was written on, wanting Xcode 27 where it finds 26.4.
+- Neither `workflow_dispatch` recovery path has been used.
+- One CI run on the release pull request failed at startup with no jobs and no log, and
+  passed when re-run unchanged. Unexplained.
