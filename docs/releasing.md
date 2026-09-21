@@ -44,6 +44,22 @@ version and a sha256.
 The tap checks that the url resolves before it commits, so a cask is never published
 pointing at an asset that is not there.
 
+## The tap is written once and bumped by a bot
+
+`typester/homebrew-sake` holds the cask and the workflow that receives the dispatch. That
+dispatch rewrites **two fields and nothing else** — `version` and `sha256`. Everything else
+in `Casks/sake.rb` was typed by hand and nothing will ever update it on its own:
+
+- `depends_on arch:` and `depends_on macos:`, which have to be moved by hand to follow
+  `Package.swift` and `Info.plist.template`;
+- the url, which has to follow the zip name `scripts/build-app.sh` builds;
+- `caveats`, which tells the reader the app is ad-hoc signed. The day `CERTIFICATE_P12` is
+  set, that text and the tap's README are both wrong, and neither is anywhere near this
+  repository.
+
+So anything a reader needs that can change belongs in this repository rather than in the
+tap. The tap's own documentation is deliberately thin and points back here.
+
 ## Not verified
 
 - **Nobody has installed the cask**, here or anywhere. `brew fetch --cask sake` downloaded
