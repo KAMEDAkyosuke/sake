@@ -48,7 +48,17 @@ the bottles under `~/Library/Sake`, and its build output under `~/Library/Caches
 
 ## Getting it
 
-There is no download yet. Build it:
+```sh
+brew tap typester/sake
+brew install --cask sake
+```
+
+Apple silicon and macOS 15 or newer; the cask refuses to install anywhere else. The app is
+ad-hoc signed and not notarised, so Gatekeeper will stop it on first launch — allow it in
+System Settings > Privacy & Security, or install with `--no-quarantine`. Nobody here has
+run that first launch on a second Mac.
+
+Or build it yourself:
 
 ```sh
 git clone https://github.com/typester/sake.git
@@ -56,10 +66,8 @@ cd sake
 ./scripts/build-app.sh --release
 ```
 
-That leaves `target/Sake.app`, which you can drag to `/Applications`. The bundle is ad-hoc
-signed and not notarised, so a copy that arrives from the internet will be stopped by
-Gatekeeper — **not measured here**, but it is what an ad-hoc signature means. Building it
-yourself is the path this repository has actually taken.
+That leaves `target/Sake.app`, which you can drag to `/Applications`. It is the path this
+repository has actually taken.
 
 ## Using it
 

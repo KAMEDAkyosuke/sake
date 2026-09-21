@@ -294,6 +294,11 @@ controller that is plugged in, visible to macOS, and completely dead in the game
 Verified by playing the game with a Switch Pro Controller over USB, 2026-09-17. Bluetooth
 and other pads are untested.
 
+**The same controller and cable played Diablo IV through sake on 2026-09-20.** Reported by
+the owner, not instrumented — there is no log of that run. What it settles is that the SDL2
+requirement above carries over to sake's own engine and bottle; it is not new evidence about
+the driver.
+
 Use SDL2 newer than CrossOver's 2.30.12: 2.32.2 fixed a crash initialising with controllers
 already connected on macOS, 2.32.6 fixed reliability of initializing Switch controllers on
 macOS, and 2.32.10 fixed thumbstick range and calibration for Switch Pro Controllers by
@@ -382,6 +387,11 @@ captured fine. The capture above is a full-screen shot taken with the window rai
 second and cropped to its bounds. The Vulkan route (`-cef-use-vulkan`) is still black on the
 rebuilt engine, for the reason in the table: its swapchain is on a window the GPU process
 owns under a root it does not, and nothing hosts that shape yet.
+
+**Signed in, and a game ran, later the same day.** The client took an account, the library
+came up, and Stardew Valley installed through it and played. Reported by the owner, not
+instrumented: nothing traced that run, and the measurements above all stop at the sign-in
+form. 2026-09-20.
 
 ## Killing wineserver leaves the prefix's own services running
 

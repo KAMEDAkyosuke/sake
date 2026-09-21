@@ -85,8 +85,10 @@ this was built for rather than by the machine that wrote it. `Battle.net-Setup.e
 from a populated `syswow64` — and it installed a client that is PE32 too. The run left a
 57 KB log under `build/`. Later the same day that client signed in, Play was pressed in it,
 and Diablo IV was playable with a keyboard and mouse — **the whole of it, from a Mac with
-no CrossOver on it to a game somebody played.** What nobody has written down yet is a second
-machine, a second game, or a controller run of sake's own.
+no CrossOver on it to a game somebody played.** A Switch Pro Controller over USB played it
+too, and Steam went on to sign in and run Stardew Valley — both the owner's word rather than
+a trace, and `runtime.md` says which is which. What nobody has written down yet is a second
+machine.
 
 **sake ships no titles of its own, as of 2026-09-20.** It knew Battle.net once — an
 executable path, its flags, and a row that appeared when that path existed. What the row
