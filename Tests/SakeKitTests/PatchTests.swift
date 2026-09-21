@@ -42,6 +42,82 @@ private func makeTree(in root: URL, content: String = "one\ntwo\nthree\n") throw
     return (tree, patches)
 }
 
+/// Three patches that change the same lines of one file, so that once B is in, A neither
+/// reverses on its own nor applies again -- the shape that stopped the second real build on
+/// 2026-09-20. B renames the line A inserted and every context line A relies on, so no fuzz
+/// factor lets `patch` find A's hunk after B.
+private enum Stack {
+    static let file = "dlls/ntdll/unix/loader.c"
+    static let pristine = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n"
+    static let afterA = "one\ntwo\nthree\nfour\nalpha\nfive\nsix\nseven\n"
+    static let afterB = "one\ntwo\ntrois\nquatre\nalfa\ncinq\nsechs\nseven\n"
+    static let afterC = "one\ntwo\ntrois\nquatre\nalfa\ncinq\nsechs\nseven\ngamma\n"
+
+    static let a = """
+        Insert alpha after four.
+
+        --- a/dlls/ntdll/unix/loader.c
+        +++ b/dlls/ntdll/unix/loader.c
+        @@ -2,6 +2,7 @@
+         two
+         three
+         four
+        +alpha
+         five
+         six
+         seven
+
+        """
+    static let b = """
+        Rename alpha and the lines around it, so that A no longer reverses on its own.
+
+        --- a/dlls/ntdll/unix/loader.c
+        +++ b/dlls/ntdll/unix/loader.c
+        @@ -1,8 +1,8 @@
+         one
+         two
+        -three
+        -four
+        -alpha
+        -five
+        -six
+        +trois
+        +quatre
+        +alfa
+        +cinq
+        +sechs
+         seven
+
+        """
+    static let c = """
+        Add gamma at the end.
+
+        --- a/dlls/ntdll/unix/loader.c
+        +++ b/dlls/ntdll/unix/loader.c
+        @@ -6,3 +6,4 @@
+         cinq
+         sechs
+         seven
+        +gamma
+
+        """
+
+    /// A tree whose file already holds `content`, and a `patches/` holding `patches` in order.
+    static func make(in root: URL, content: String, patches: [(name: String, text: String)]) throws -> (tree: URL, patches: URL) {
+        let tree = root.appending(path: "tree")
+        let file = tree.appending(path: file)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try content.write(to: file, atomically: true, encoding: .utf8)
+
+        let directory = root.appending(path: "patches")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for patch in patches {
+            try patch.text.write(to: directory.appending(path: patch.name), atomically: true, encoding: .utf8)
+        }
+        return (tree, directory)
+    }
+}
+
 private final class Lines: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []
@@ -94,10 +170,7 @@ private func read(_ tree: URL) throws -> String {
 
 @Test func nothingOutsideNtdllAndTheMacDriverIsPatched() throws {
     for patch in try WinePatcher(directory: repositoryPatches).patches() {
-        let text = try String(contentsOf: patch.url, encoding: .utf8)
-        let targets = text.split(separator: "\n")
-            .filter { $0.hasPrefix("--- a/") }
-            .map { $0.dropFirst("--- a/".count) }
+        let targets = patch.targets
 
         #expect(!targets.isEmpty, "\(patch.id) patches nothing")
         for target in targets {
@@ -141,6 +214,72 @@ private func read(_ tree: URL) throws -> String {
         try await WinePatcher(directory: patches).apply(to: tree)
     }
     #expect(try read(tree) == "something\nelse\nentirely\n")
+}
+
+@Test func aStackOnOneFileIsRecognisedOnTheSecondRun() async throws {
+    let root = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (tree, patches) = try Stack.make(in: root, content: Stack.afterB, patches: [
+        ("0001-a.patch", Stack.a), ("0002-b.patch", Stack.b),
+    ])
+
+    // A on its own reverses on nothing here and applies to nothing here: the second real
+    // build on 2026-09-20 stopped exactly there. The stack A, B reverses top-down.
+    let lines = Lines()
+    try await WinePatcher(directory: patches).apply(to: tree) { lines.append($0) }
+    #expect(lines.all == [
+        "already applied: 0001-a.patch (under later patches)",
+        "already applied: 0002-b.patch",
+    ])
+    #expect(try read(tree) == Stack.afterB)
+}
+
+@Test func anOlderTreeWithOnlyTheFirstPatchInGetsTheRestApplied() async throws {
+    let root = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (tree, patches) = try Stack.make(in: root, content: Stack.afterA, patches: [
+        ("0001-a.patch", Stack.a), ("0002-b.patch", Stack.b),
+    ])
+
+    // An engine built by an older sake has the patches that sake carried and none of the
+    // ones added since.
+    let lines = Lines()
+    try await WinePatcher(directory: patches).apply(to: tree) { lines.append($0) }
+    #expect(lines.all == ["already applied: 0001-a.patch", "applied: 0002-b.patch"])
+    #expect(try read(tree) == Stack.afterB)
+}
+
+@Test func aNewPatchGoesOnTopOfAnAppliedStack() async throws {
+    let root = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (tree, patches) = try Stack.make(in: root, content: Stack.afterB, patches: [
+        ("0001-a.patch", Stack.a), ("0002-b.patch", Stack.b), ("0003-c.patch", Stack.c),
+    ])
+
+    let lines = Lines()
+    try await WinePatcher(directory: patches).apply(to: tree) { lines.append($0) }
+    #expect(lines.all == [
+        "already applied: 0001-a.patch (under later patches)",
+        "already applied: 0002-b.patch",
+        "applied: 0003-c.patch",
+    ])
+    #expect(try read(tree) == Stack.afterC)
+}
+
+@Test func aStackThatDoesNotReverseIsStillAnErrorAndLeavesTheTreeAlone() async throws {
+    let root = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    // Almost B's result, but the line A inserted and B renamed reads beta: B does not reverse
+    // on this, so no run from A reverses either, and A is the error the way it always was.
+    let content = "one\ntwo\ntrois\nquatre\nbeta\ncinq\nsechs\nseven\n"
+    let (tree, patches) = try Stack.make(in: root, content: content, patches: [
+        ("0001-a.patch", Stack.a), ("0002-b.patch", Stack.b), ("0003-c.patch", Stack.c),
+    ])
+
+    await #expect(throws: PatchError.doesNotApply(patch: "0001-a.patch", tree: tree.path)) {
+        try await WinePatcher(directory: patches).apply(to: tree)
+    }
+    #expect(try read(tree) == content)
 }
 
 @Test func noPatchesAtAllIsAFailureRatherThanAQuietSuccess() async throws {

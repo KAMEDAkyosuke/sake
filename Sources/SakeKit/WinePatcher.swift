@@ -14,6 +14,14 @@ public struct WinePatch: Sendable, Equatable, Identifiable {
         let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         return String(text.prefix(while: { !$0.isNewline }))
     }
+
+    /// The files this patch changes, relative to the tree, as its `--- a/` lines name them.
+    public var targets: [String] {
+        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        return text.split(separator: "\n")
+            .filter { $0.hasPrefix("--- a/") }
+            .map { String($0.dropFirst("--- a/".count)) }
+    }
 }
 
 public enum PatchError: Error, Equatable, LocalizedError {
@@ -81,21 +89,76 @@ public struct WinePatcher: Sendable {
     ///
     /// Whether a patch is already applied is asked of `patch` itself -- if it reverses
     /// cleanly it is in -- rather than recorded in a marker file, which would have to be
-    /// invalidated by hand every time a patch here changed.
+    /// invalidated by hand every time a patch here changed. Patches that change the same
+    /// lines stack, and one under the top of its stack reverses neither on its own nor
+    /// applies again; for those the stack is what is asked. See docs/wine-build.md.
     public func apply(
         to tree: URL,
         onOutput: @Sendable (String) -> Void = { _ in }
     ) async throws {
-        for patch in try patches() {
+        let patches = try patches()
+        var index = 0
+        while index < patches.count {
+            let patch = patches[index]
+            // Reversal is asked first. Apple's patch answers a forward dry run of a patch
+            // that is already in with success as well: it notices the hunks are reversed,
+            // asks whether to assume -R, takes the default yes at end of input, and exits
+            // 0. The real run after it would then put the patch in twice.
             if try await runs(patch, on: tree, reversed: true, dryRun: true) {
                 onOutput("already applied: \(patch.id)")
+                index += 1
             } else if try await runs(patch, on: tree, reversed: false, dryRun: true) {
                 _ = try await runs(patch, on: tree, reversed: false, dryRun: false)
                 onOutput("applied: \(patch.id)")
+                index += 1
+            } else if let top = try await appliedRun(in: patches, from: index, tree: tree) {
+                for applied in patches[index..<top] {
+                    onOutput("already applied: \(applied.id) (under later patches)")
+                }
+                onOutput("already applied: \(patches[top].id)")
+                index = top + 1
             } else {
                 throw PatchError.doesNotApply(patch: patch.id, tree: tree.path)
             }
         }
+    }
+
+    /// The index of the top of the longest run `patches[start...]` that reverses top-down,
+    /// or nil when no such run does. Reversing is done for real on a copy of the files the
+    /// run touches, because a dry run cannot be sequenced; the tree itself is not touched.
+    private func appliedRun(in patches: [WinePatch], from start: Int, tree: URL) async throws -> Int? {
+        for top in stride(from: patches.count - 1, through: start, by: -1) {
+            let run = Array(patches[start...top])
+            let copy = FileManager.default.temporaryDirectory
+                .appending(path: "sake-patch-check-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: copy) }
+            guard copyTargets(of: run, from: tree, to: copy) else { continue }
+
+            var reversed = true
+            for patch in run.reversed() {
+                let ok = try await runs(patch, on: copy, reversed: true, dryRun: false)
+                if !ok { reversed = false; break }
+            }
+            if reversed { return top }
+        }
+        return nil
+    }
+
+    private func copyTargets(of patches: [WinePatch], from tree: URL, to copy: URL) -> Bool {
+        let manager = FileManager.default
+        for target in Set(patches.flatMap(\.targets)) {
+            let source = tree.appending(path: target)
+            let destination = copy.appending(path: target)
+            do {
+                try manager.createDirectory(
+                    at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+                )
+                try manager.copyItem(at: source, to: destination)
+            } catch {
+                return false
+            }
+        }
+        return true
     }
 
     private func runs(

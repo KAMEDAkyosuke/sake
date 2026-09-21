@@ -72,15 +72,22 @@ build has one step that is not out of tree. Whether a patch is already in is ask
 file, because the tarball is unpacked once and never re-extracted and a marker would have to
 be invalidated by hand every time a patch changed.
 
-**That check is wrong for patches that stack.** Measured 2026-09-20, on the second build
-after the four winemac.drv patches went in: 0003 does not reverse on its own once 0004 and
-0005 have changed the lines around it, does not apply forward either, and the build stopped
-with "applies to neither" before configure. The two ntdll patches never showed this because
-they touch different regions. Until the check is taught about stacks, a rebuild after the
-first needs the driver patches reversed by hand from the top down —
-`patch -R -p1 -d sources/wine < patches/0005…`, then 0004, then 0003 — which leaves the tree
-pristine for those files and lets the build apply them again in order. A patch that reverses
-cleanly on its own, as 0001 and 0002 do, is unaffected.
+**Patches on one file stack, and the check knows it.** Measured 2026-09-20, on the second
+build after the four winemac.drv patches went in: 0003 no longer reversed on its own once
+0004 and 0005 had changed the lines around it, did not apply forward either, and the build
+stopped with "applies to neither" before configure. The two ntdll patches never showed this
+because they touch different regions. So a patch that reverses on its own is taken as
+applied and as the top of its stack; one that neither reverses nor applies is tried as the
+bottom of a run: the files the run touches are copied to a temporary directory, the run is
+reversed there from the top down, and if that succeeds the whole run counts as applied. The
+tree itself only ever sees dry runs and forward applications. `PatchTests` carries the three
+shapes a tree can be in when a build starts — pristine, an older version's prefix, and an
+applied stack with a new patch on top — and the stack that does not reverse, which is still
+the error it always was.
+
+**A build with no patches is stopped rather than allowed.** Wine without them configures,
+compiles, installs and passes every check in this document. What it cannot do is start a
+game, and that is a long way downstream of here.
 
 An engine that is already built does not pick a new patch up: `make install` is what writes
 `bin/wine`, and its presence is what says the step is done. Changing a patch means deleting

@@ -216,10 +216,11 @@ easier to read than it was interleaved with `configure` flags.
   that. Both went away.)
 - **A built engine does not pick up a change to a patch.** `bin/wine` existing is what says
   the Wine step is done, so changing something in `patches/` means deleting that by hand and
-  rebuilding. **And the rebuild then fails to recognise stacked patches as applied**
-  (2026-09-20): `WinePatcher` asks `patch` to reverse each one alone, which a patch under
-  two others cannot do. `wine-build.md` has the hand procedure; the check needs to learn
-  that patches on the same file form a stack that is applied and reversed in order. The D3DMetal half of this went away on 2026-09-19 — a rebuild now drops that
+  rebuilding. ~~And the rebuild then fails to recognise stacked patches as applied.~~
+  **Answered 2026-09-20**, the same day it was found: `WinePatcher` asked `patch` to reverse
+  each one alone, which a patch under two others cannot do; it now treats patches on one
+  file as a stack, reversed top-down on a copy of the files they touch. `wine-build.md` has
+  the measurement. The D3DMetal half of this went away on 2026-09-19 — a rebuild now drops that
   step back to unfinished, because it asks whether the DLLs are Apple's rather than whether
   the framework is there — but nothing yet knows that a patch has changed under it.
 - **How much to generalise beyond one title.** The prototype hard-coded Diablo IV in several
