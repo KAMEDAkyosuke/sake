@@ -111,7 +111,9 @@ patches in `patches/`. `runtime.md` has the measurement and what to look for.
 What the second title taught about profiles: Steam needed **nothing** per-title once the
 engine could host a swapchain across processes — no flags, no environment, no registry. The
 three Chromium flags sake offers are Battle.net's, measured on its 32-bit CEF, and Steam's
-client cannot even take them. So a title profile is still name, executable and arguments,
+client cannot even take them. So a title profile was name, executable and arguments until
+2026-09-21, when it gained an environment of its own — `runtime.md` has what that may and
+may not set —
 and the argument suggestion is a heuristic for one launcher rather than a rule for Chromium.
 Nothing yet knows that starting Diablo IV directly fails on the token — `runtime.md` says
 so, the app does not.
@@ -199,6 +201,33 @@ running, and a bottle just created does not offer what could be imported into it
 something else surveys — `create` sets `importTarget` after the survey that would have used
 it.
 
+**A bottle hands over Wine's own tools rather than growing settings of its own, from
+2026-09-21.** The Windows version, the DLL overrides, the drives and the audio device are
+winecfg's panels, and what they set is the bottle's registry — which `runtime.md` records as
+being flushed lazily by wineserver, so a copy of it in a SwiftUI form would be a second copy
+that lies. The engine already ships fourteen of these programs; the bottle offers four of
+them, the ones that mean something to a bottle with a game in it: winecfg, regedit, the
+uninstaller and the task manager. The rest are either not useful here or better done on the
+macOS side.
+
+Offered, not recommended. winecfg's Windows-version dropdown can break a game, which is the
+same objection the CrossOver-version knob has in the open questions below: exposing it
+invites a combination nobody has run. The difference is that these are Wine's own surfaces
+and sake reimplementing them would not make them safer, only harder to keep true.
+
+The wineserver a tool starts is not something the rename guard knows about — it asks what
+sake started, which is the narrowness the open question about prefixes already describes.
+Running winecfg therefore does not refuse a rename the way a running game does.
+
+**And one layout trap, found the same day.** A `Text` with
+`.fixedSize(horizontal: false, vertical: true)` in a detail pane makes the pane demand a
+height the window does not have to offer; the demand reaches the `NavigationSplitView`,
+which is laid out taller than the window and centred in it, so the content leaves the
+visible area upwards and the window draws empty while the accessibility tree still reports
+every string. The panes scroll now, which keeps the modifier — it is there so a long value
+wraps instead of being truncated — and bounds what the demand can do. The setup wizard had
+been doing this from the start.
+
 ## The Swift/subprocess boundary
 
 Settled during planning on 2026-09-18, recorded here so it is not relitigated.
@@ -252,7 +281,17 @@ easier to read than it was interleaved with `configure` flags.
   after an uninstall are all judgements, and all in the app target — `scripts/test.sh` only
   reaches `SakeKit`. `CLAUDE.md` says logic in a view stops being tested; this is the same
   thing one layer down. Either these move behind types that do not know about SwiftUI, or
-  the app target gets tests of its own.
+  the app target gets tests of its own. `typedEnvironment()`, added 2026-09-21, is another
+  of these: which variable names a title may not set is a judgement, and it lives in the app
+  target where the tests cannot reach it.
+- **Two buttons say "Check Again" in the setup wizard.** The bottom bar adds one when the
+  step is the machine step, and `primary` adds another because that step is not done, so
+  both render the same verb. The comment above the first says it is there for the step
+  "worth repeating after it has passed" — which is the condition the code does not check.
+  Found 2026-09-21, not fixed.
+- **Editing a title moves it to the end of the sidebar.** `TitleStore.add()` filters the id
+  out and appends, so saving Options reorders the library. Harmless and confusing, and it
+  cost a measurement on 2026-09-21: a row addressed by index was no longer the row it was.
 - **Where the CrossOver version lives.** It is a knob users may need — a newer CrossOver may
   fix or break a given game — but exposing it invites them to pick a combination nobody has
   run. Steam gave the knob a concrete reason on 2026-09-20: two of sake's patches are
