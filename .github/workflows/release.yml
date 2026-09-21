@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  # Attaching an app to a tag that has none, after a build failed. The tag and the release
+  # are already public by then, so the only way back is to build against the tag again.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to attach the app to, e.g. v0.1.0
+        required: true
+
+# A run cut in half can leave a tag with no app behind it, which is not undoable.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # The default token cannot start another workflow run, so the build below is a job of
+      # this same run rather than a workflow watching for the tag. The cost is that the
+      # release pull request gets no CI; a GitHub App token would fix that and nothing else.
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  build:
+    name: Build and publish
+    needs: please
+    # `needs` is skipped entirely on a manual run, which would take this job with it.
+    if: |
+      always() && (github.event_name == 'workflow_dispatch'
+        || needs.please.outputs.released == 'true')
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha256: ${{ steps.zip.outputs.sha256 }}
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.please.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check the tag against VERSION
+        id: version
+        run: |
+          VERSION="$(cat VERSION)"
+          if [ "$TAG" != "v${VERSION}" ]; then
+            echo "Tag ${TAG} does not match VERSION ${VERSION}" >&2
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - run: ./scripts/test.sh
+
+      - name: Install signing certificate
+        id: signing
+        env:
+          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE_P12" ]; then
+            echo "No signing certificate configured, using ad-hoc signing"
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security import $RUNNER_TEMP/cert.p12 -k "$KEYCHAIN_PATH" \
+            -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f $RUNNER_TEMP/cert.p12
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+          echo "identity=sake-codesign-certificate" >> "$GITHUB_OUTPUT"
+
+      - name: Build the app
+        run: ./scripts/build-app.sh --release
+        env:
+          CODESIGN_IDENTITY: ${{ steps.signing.outputs.identity }}
+
+      - name: Hash the zip
+        id: zip
+        run: |
+          ZIP="target/Sake-arm64-${{ steps.version.outputs.version }}.zip"
+          echo "path=${ZIP}" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "$ZIP" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: ${{ steps.zip.outputs.path }}
+
+  update-homebrew:
+    name: Update Homebrew cask
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      # The sha256 comes from the build rather than from a download of the release: this
+      # repository is private, and an unauthenticated curl of its asset gets a 404.
+      - name: Dispatch to the tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No HOMEBREW_DISPATCH_TOKEN; the tap does not exist yet. Skipping."
+            exit 0
+          fi
+          gh api repos/typester/homebrew-sake/dispatches \
+            -f event_type="update-cask" \
+            -f "client_payload[version]=${{ needs.build.outputs.version }}" \
+            -f "client_payload[arm64_sha256]=${{ needs.build.outputs.sha256 }}"

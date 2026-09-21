@@ -17,6 +17,17 @@ Conventions for this repository. Personal and machine-specific ones live in
 - Never add comments that merely restate what the immediately following code does.
 - Comments that survive here earn their place by recording a trap, not by narrating.
 
+## Commit messages
+
+Conventional Commits, because `release-please` reads them to decide the next version:
+`feat:` and `fix:` move it, everything else (`docs:`, `ci:`, `refactor:`, `chore:`) does
+not. The prose this repository writes goes after the prefix, unchanged —
+`fix: keep the wizard shut when there is nothing to set up, because it was opening on`.
+
+The version lives in `VERSION`, and release-please owns it. Do not edit it by hand, and do
+not tag by hand: a push to `main` opens or updates a release pull request, and merging that
+pull request is what tags, releases and builds.
+
 ## Package Naming
 
 The bundle identifier is `dev.typester.sake`. **Not `com.typester.*`** — `typester.com` is
