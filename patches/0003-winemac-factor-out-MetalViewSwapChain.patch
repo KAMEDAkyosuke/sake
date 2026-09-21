@@ -1,0 +1,199 @@
+winemac: Factor out Metal device and view logic into MetalViewSwapChain.
+
+Upstream Wine commit 52e03c61e4e831792f7a525dbe46678dea988ca1 by Marc-Aurel Zent
+<mzent@codeweavers.com>, 2026-04-23, committed by Alexandre Julliard for wine-11.11.
+Carried here unchanged because CrossOver 26.3.0's sources are Wine 11.0, and the next
+patch -- the cross-process swapchain Steam's GPU process needs -- is written against
+this shape of the driver. Drop it as soon as the CrossOver sources sake builds are
+based on wine-11.11 or later: the tarball will already contain it.
+
+Applies to the 26.3.0 tree as upstream wrote it; no hunk needed moving.
+
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -4065,8 +4065,76 @@
+         [view removeFromSuperview];
+         [view release];
+     });
++}
++
++@protocol WineMetalSwapChain <NSObject>
++
++- (CAMetalLayer*) layer;
++
++@end
++
++@interface MetalViewSwapChain : NSObject <WineMetalSwapChain>
++{
++    macdrv_metal_device device;
++    macdrv_metal_view metal_view;
++}
++
++- (instancetype) initWithView:(macdrv_view)view;
++
++@end
++
++@implementation MetalViewSwapChain
++
++- (instancetype) initWithView:(macdrv_view)view
++{
++    self = [super init];
++    if (!self) return nil;
++
++    if (!(device = macdrv_create_metal_device()))
++    {
++        [self release];
++        return nil;
++    }
++    if (!(metal_view = macdrv_view_create_metal_view(view, device)))
++    {
++        macdrv_release_metal_device(device);
++        device = NULL;
++        [self release];
++        return nil;
++    }
++    return self;
+ }
+ 
++- (CAMetalLayer*) layer
++{
++    return (CAMetalLayer*)macdrv_view_get_metal_layer(metal_view);
++}
++
++- (void) dealloc
++{
++    if (metal_view) macdrv_view_release_metal_view(metal_view);
++    if (device) macdrv_release_metal_device(device);
++    [super dealloc];
++}
++
++@end
++
++macdrv_metal_swapchain macdrv_create_view_swapchain(macdrv_view v)
++{
++    return (macdrv_metal_swapchain)[[MetalViewSwapChain alloc] initWithView:v];
++}
++
++macdrv_metal_layer macdrv_swapchain_get_layer(macdrv_metal_swapchain swapchain)
++{
++    return (macdrv_metal_layer)[(id<WineMetalSwapChain>)swapchain layer];
++}
++
++
++void macdrv_destroy_swapchain(macdrv_metal_swapchain swapchain)
++{
++    [(id<WineMetalSwapChain>)swapchain release];
++}
++
+ bool macdrv_get_view_backing_size(macdrv_view v, int backing_size[2])
+ {
+     WineContentView* view = (WineContentView*)v;
+--- a/dlls/winemac.drv/macdrv.h
++++ b/dlls/winemac.drv/macdrv.h
+@@ -201,10 +201,9 @@
+ 
+ struct macdrv_client_surface
+ {
+-    struct client_surface client;
+-    macdrv_view           cocoa_view;
+-    macdrv_metal_device   metal_device;
+-    macdrv_metal_view     metal_view;
++    struct client_surface   client;
++    macdrv_view             cocoa_view;
++    macdrv_metal_swapchain  metal_swapchain;
+ };
+ 
+ static inline struct macdrv_client_surface *impl_from_client_surface(struct client_surface *client)
+@@ -213,6 +212,7 @@
+ }
+ 
+ extern struct macdrv_client_surface *macdrv_client_surface_create(HWND hwnd);
++extern BOOL macdrv_client_surface_acquire_metal_swapchain(struct macdrv_client_surface *surface);
+ 
+ extern struct macdrv_win_data *get_win_data(HWND hwnd);
+ extern void release_win_data(struct macdrv_win_data *data);
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -122,6 +122,7 @@
+ typedef struct macdrv_opaque_metal_device* macdrv_metal_device;
+ typedef struct macdrv_opaque_metal_view* macdrv_metal_view;
+ typedef struct macdrv_opaque_metal_layer* macdrv_metal_layer;
++typedef struct macdrv_opaque_metal_swapchain* macdrv_metal_swapchain;
+ typedef struct macdrv_opaque_status_item* macdrv_status_item;
+ struct macdrv_event;
+ struct macdrv_query;
+@@ -559,6 +560,9 @@
+ extern macdrv_metal_view macdrv_view_create_metal_view(macdrv_view v, macdrv_metal_device d);
+ extern macdrv_metal_layer macdrv_view_get_metal_layer(macdrv_metal_view v);
+ extern void macdrv_view_release_metal_view(macdrv_metal_view v);
++extern macdrv_metal_swapchain macdrv_create_view_swapchain(macdrv_view v);
++extern macdrv_metal_layer macdrv_swapchain_get_layer(macdrv_metal_swapchain swapchain);
++extern void macdrv_destroy_swapchain(macdrv_metal_swapchain swapchain);
+ extern bool macdrv_get_view_backing_size(macdrv_view v, int backing_size[2]);
+ extern void macdrv_set_view_backing_size(macdrv_view v, const int backing_size[2]);
+ extern uint32_t macdrv_window_background_color(void);
+--- a/dlls/winemac.drv/window.c
++++ b/dlls/winemac.drv/window.c
+@@ -1146,8 +1146,7 @@
+ 
+     TRACE("%s\n", debugstr_client_surface(client));
+ 
+-    if (surface->metal_view) macdrv_view_release_metal_view(surface->metal_view);
+-    if (surface->metal_device) macdrv_release_metal_device(surface->metal_device);
++    if (surface->metal_swapchain) macdrv_destroy_swapchain(surface->metal_swapchain);
+ }
+ 
+ static void macdrv_client_surface_detach(struct client_surface *client)
+@@ -1235,6 +1234,21 @@
+     }
+ 
+     return surface;
++}
++
++BOOL macdrv_client_surface_acquire_metal_swapchain(struct macdrv_client_surface *surface)
++{
++    HWND hwnd = surface->client.hwnd;
++    struct macdrv_win_data *data;
++
++    if (surface->metal_swapchain) return TRUE;
++
++    if ((data = get_win_data(hwnd)))
++    {
++        release_win_data(data);
++        surface->metal_swapchain = macdrv_create_view_swapchain(surface->cocoa_view);
++    }
++    return surface->metal_swapchain != NULL;
+ }
+ 
+ /**********************************************************************
+--- a/dlls/winemac.drv/vulkan.c
++++ b/dlls/winemac.drv/vulkan.c
+@@ -52,16 +52,16 @@
+     TRACE("%p %p %p %p\n", hwnd, instance, handle, client);
+ 
+     if (!(surface = macdrv_client_surface_create(hwnd))) return VK_ERROR_OUT_OF_HOST_MEMORY;
+-    if (!(surface->metal_device = macdrv_create_metal_device())) goto err;
+-    if (!(surface->metal_view = macdrv_view_create_metal_view(surface->cocoa_view, surface->metal_device))) goto err;
+ 
++    if (!macdrv_client_surface_acquire_metal_swapchain(surface)) goto err;
++
+     if (instance->p_vkCreateMetalSurfaceEXT)
+     {
+         VkMetalSurfaceCreateInfoEXT create_info_host;
+         create_info_host.sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT;
+         create_info_host.pNext = NULL;
+         create_info_host.flags = 0; /* reserved */
+-        create_info_host.pLayer = macdrv_view_get_metal_layer(surface->metal_view);
++        create_info_host.pLayer = macdrv_swapchain_get_layer(surface->metal_swapchain);
+ 
+         res = instance->p_vkCreateMetalSurfaceEXT(instance->host.instance, &create_info_host, NULL /* allocator */, handle);
+     }
+@@ -71,7 +71,7 @@
+         create_info_host.sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK;
+         create_info_host.pNext = NULL;
+         create_info_host.flags = 0; /* reserved */
+-        create_info_host.pView = macdrv_view_get_metal_layer(surface->metal_view);
++        create_info_host.pView = macdrv_swapchain_get_layer(surface->metal_swapchain);
+ 
+         res = instance->p_vkCreateMacOSSurfaceMVK(instance->host.instance, &create_info_host, NULL /* allocator */, handle);
+     }

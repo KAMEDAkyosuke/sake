@@ -1,0 +1,346 @@
+winemac: Implement cross-process MetalViewSwapChain via CALayerHost.
+
+Upstream Wine commit 1a63b0d7c431f1ebbaba9afd2daa312690eb8020 by Marc-Aurel Zent
+<mzent@codeweavers.com>, 2026-05-20, committed by Alexandre Julliard for wine-11.11.
+It gives a process a Metal swapchain for a top-level window another process owns: the
+renderer draws into an offscreen CAMetalLayer exported through a CAContext, and the
+owner hosts it in its NSWindow with a CALayerHost when asked to by
+WM_MACDRV_CREATE_REMOTE_LAYER. That is the half of Steam's problem upstream has already
+solved; the child-window half is the next patch. Drop this one together with 0003 when
+the base catches up.
+
+One hunk placed by hand: the _caLayerHosts ivar of WineContentView, because CrossOver's
+version of that block carries the CW HACK 22435 ivar after _metalView and the upstream
+context does not match.
+
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -43,6 +43,25 @@
+  * NSWindowStyleMaskNonactivatingPanel.
+  * Available since at least macOS 10.6. */
+ - (void)_setPreventsActivation:(BOOL)flag;
++
++@end
++
++typedef uint32_t CGSConnectionID;
++extern CGSConnectionID CGSMainConnectionID(void);
++
++typedef uint32_t CAContextID;
++
++@interface CAContext : NSObject
++
+++ (id) contextWithCGSConnection:(CGSConnectionID)connection options:(NSDictionary*)options;
++@property(readonly) CAContextID contextId;
++@property(retain) CALayer* layer;
++
++@end
++
++@interface CALayerHost : CALayer
++
++- (void) setContextId:(CAContextID)contextId;
+ 
+ @end
+ 
+@@ -375,6 +394,7 @@
+     int backingSize[2];
+ 
+     WineMetalView *_metalView;
++    NSMutableDictionary<NSNumber*, CALayerHost*>* _caLayerHosts;
+ 
+ @public void *d3dmetal_client_surface;   /* CW HACK 22435 */
+ }
+@@ -389,6 +409,8 @@
+     - (void) wine_setBackingSize:(const int*)newBackingSize;
+ 
+     - (WineMetalView*) newMetalViewWithDevice:(id<MTLDevice>)device;
++    - (void) addCALayerHostViewWithContextId:(CAContextID)contextId;
++    - (void) removeCALayerHostView:(CAContextID)contextId;
+ 
+ @end
+ 
+@@ -499,6 +521,7 @@
+         [markedText release];
+         [glContexts release];
+         [pendingGlContexts release];
++        [_caLayerHosts release];
+         CGImageRelease(colorImage);
+         CGImageRelease(shapeImage);
+         [super dealloc];
+@@ -702,6 +725,33 @@
+         return _metalView;
+     }
+ 
++    - (void) addCALayerHostViewWithContextId:(CAContextID)contextId
++    {
++        if (!_caLayerHosts)
++            _caLayerHosts = [[NSMutableDictionary alloc] init];
++
++        [self removeCALayerHostView:contextId];
++
++        CALayerHost* host = [CALayerHost layer];
++        [host setContextId:contextId];
++        host.magnificationFilter = kCAFilterNearest;
++        host.contentsScale = retina_on ? 2.0 : 1.0;
++        host.frame = self.layer.bounds;
++        host.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
++
++        [self.layer addSublayer:host];
++        [_caLayerHosts setObject:host forKey:@(contextId)];
++
++        [(WineWindow*)self.window windowDidDrawContent];
++    }
++
++    - (void) removeCALayerHostView:(CAContextID)contextId
++    {
++        NSNumber* key = @(contextId);
++        [[_caLayerHosts objectForKey:key] removeFromSuperlayer];
++        [_caLayerHosts removeObjectForKey:key];
++    }
++
+     - (void) setLayerRetinaProperties:(BOOL)mode
+     {
+         [self layer].contentsScale = mode ? 2.0 : 1.0;
+@@ -740,6 +790,9 @@
+ #pragma clang diagnostic pop
+         [self updateGLContexts];
+         [self setLayerRetinaProperties:mode];
++
++        for (CALayerHost* host in [_caLayerHosts allValues])
++            host.contentsScale = mode ? 2.0 : 1.0;
+ 
+         [super setRetinaMode:mode];
+     }
+@@ -4119,11 +4172,103 @@
+ 
+ @end
+ 
++@interface CAContextSwapChain : NSObject <WineMetalSwapChain>
++{
++    void* hwnd;
++    macdrv_metal_device device;
++    CAMetalLayer* offscreen_layer;
++    CAContext* remote_context;
++    CAContextID context_id;
++}
++
++- (instancetype) initWithHwnd:(void*)hwnd bounds:(CGRect)bounds;
++
++@end
++
++@implementation CAContextSwapChain
++
++- (instancetype) initWithHwnd:(void*)newHwnd bounds:(CGRect)bounds
++{
++    self = [super init];
++    if (!self) return nil;
++
++    hwnd = newHwnd;
++    if (!(device = macdrv_create_metal_device()))
++    {
++        [self release];
++        return nil;
++    }
++
++    offscreen_layer = [[CAMetalLayer alloc] init];
++    if (!offscreen_layer)
++    {
++        macdrv_release_metal_device(device);
++        device = NULL;
++        [self release];
++        return nil;
++    }
++
++    offscreen_layer.device = (id<MTLDevice>)device;
++    offscreen_layer.framebufferOnly = YES;
++    offscreen_layer.magnificationFilter = kCAFilterNearest;
++    offscreen_layer.backgroundColor = CGColorGetConstantColor(kCGColorBlack);
++    offscreen_layer.contentsScale = retina_on ? 2.0 : 1.0;
++    [offscreen_layer setBounds:cgrect_mac_from_win(bounds)];
++    [offscreen_layer setAnchorPoint:CGPointMake(0, 0)];
++
++    /* Export the CAMetalLayer from the rendering process, then have the
++     * target HWND's owner host it using CALayerHost. */
++    OnMainThread(^{
++        remote_context = [[CAContext contextWithCGSConnection:CGSMainConnectionID()
++                                                      options:[NSDictionary dictionary]] retain];
++        [remote_context setLayer:offscreen_layer];
++        context_id = [remote_context contextId];
++    });
++
++    if (!remote_context || !context_id)
++    {
++        [self release];
++        return nil;
++    }
++
++    macdrv_create_remote_layer(hwnd, context_id);
++    return self;
++}
++
++- (CAMetalLayer*) layer
++{
++    return offscreen_layer;
++}
++
++- (void) dealloc
++{
++    if (context_id) macdrv_release_remote_layer(hwnd, context_id);
++    CAContext *context = remote_context;
++    CAMetalLayer *layer = offscreen_layer;
++    macdrv_metal_device dev = device;
++
++    OnMainThreadAsync(^{
++        [context setLayer:nil];
++        [context release];
++        [layer release];
++        if (dev) macdrv_release_metal_device(dev);
++    });
++
++    [super dealloc];
++}
++
++@end
++
+ macdrv_metal_swapchain macdrv_create_view_swapchain(macdrv_view v)
+ {
+     return (macdrv_metal_swapchain)[[MetalViewSwapChain alloc] initWithView:v];
+ }
+ 
++macdrv_metal_swapchain macdrv_create_offscreen_swapchain(void* hwnd, CGRect bounds)
++{
++    return (macdrv_metal_swapchain)[[CAContextSwapChain alloc] initWithHwnd:hwnd bounds:bounds];
++}
++
+ macdrv_metal_layer macdrv_swapchain_get_layer(macdrv_metal_swapchain swapchain)
+ {
+     return (macdrv_metal_layer)[(id<WineMetalSwapChain>)swapchain layer];
+@@ -4135,6 +4280,36 @@
+     [(id<WineMetalSwapChain>)swapchain release];
+ }
+ 
++void macdrv_window_create_ca_layer_host_view(macdrv_window w, unsigned int context_id)
++{
++@autoreleasepool
++{
++    WineWindow* window = (WineWindow*)w;
++
++    OnMainThread(^{
++        NSView* content_view = [window contentView];
++
++        if ([content_view isKindOfClass:[WineContentView class]])
++            [(WineContentView*)content_view addCALayerHostViewWithContextId:context_id];
++    });
++}
++}
++
++void macdrv_window_release_ca_layer_host_view(macdrv_window w, unsigned int context_id)
++{
++@autoreleasepool
++{
++    WineWindow* window = (WineWindow*)w;
++
++    OnMainThread(^{
++        NSView* content_view = [window contentView];
++
++        if ([content_view isKindOfClass:[WineContentView class]])
++            [(WineContentView*)content_view removeCALayerHostView:context_id];
++    });
++}
++}
++
+ bool macdrv_get_view_backing_size(macdrv_view v, int backing_size[2])
+ {
+     WineContentView* view = (WineContentView*)v;
+--- a/dlls/winemac.drv/macdrv.h
++++ b/dlls/winemac.drv/macdrv.h
+@@ -100,6 +100,8 @@
+ {
+     WM_MACDRV_SET_WIN_REGION = WM_WINE_FIRST_DRIVER_MSG,
+     WM_MACDRV_ACTIVATE_ON_FOLLOWING_FOCUS,
++    WM_MACDRV_CREATE_REMOTE_LAYER,
++    WM_MACDRV_RELEASE_REMOTE_LAYER,
+ };
+ 
+ struct macdrv_thread_data
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -561,8 +561,13 @@
+ extern macdrv_metal_layer macdrv_view_get_metal_layer(macdrv_metal_view v);
+ extern void macdrv_view_release_metal_view(macdrv_metal_view v);
+ extern macdrv_metal_swapchain macdrv_create_view_swapchain(macdrv_view v);
++extern macdrv_metal_swapchain macdrv_create_offscreen_swapchain(void* hwnd, CGRect bounds);
+ extern macdrv_metal_layer macdrv_swapchain_get_layer(macdrv_metal_swapchain swapchain);
+ extern void macdrv_destroy_swapchain(macdrv_metal_swapchain swapchain);
++extern void macdrv_window_create_ca_layer_host_view(macdrv_window w, unsigned int context_id);
++extern void macdrv_window_release_ca_layer_host_view(macdrv_window w, unsigned int context_id);
++extern void macdrv_create_remote_layer(void* hwnd, unsigned int context_id);
++extern void macdrv_release_remote_layer(void* hwnd, unsigned int context_id);
+ extern bool macdrv_get_view_backing_size(macdrv_view v, int backing_size[2]);
+ extern void macdrv_set_view_backing_size(macdrv_view v, const int backing_size[2]);
+ extern uint32_t macdrv_window_background_color(void);
+--- a/dlls/winemac.drv/window.c
++++ b/dlls/winemac.drv/window.c
+@@ -1248,6 +1248,20 @@
+         release_win_data(data);
+         surface->metal_swapchain = macdrv_create_view_swapchain(surface->cocoa_view);
+     }
++    else
++    {
++        RECT rect;
++
++        if (NtUserGetAncestor(hwnd, GA_ROOT) != hwnd)
++        {
++            FIXME("Cross-process child window Metal swapchains are not implemented\n");
++            return FALSE;
++        }
++
++        if (!NtUserGetClientRect(hwnd, &rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI))) return FALSE;
++        surface->metal_swapchain = macdrv_create_offscreen_swapchain(hwnd, cgrect_from_rect(rect));
++    }
++
+     return surface->metal_swapchain != NULL;
+ }
+ 
+@@ -1630,14 +1644,42 @@
+     case WM_MACDRV_ACTIVATE_ON_FOLLOWING_FOCUS:
+         activate_on_following_focus();
+         TRACE("WM_MACDRV_ACTIVATE_ON_FOLLOWING_FOCUS time %u\n", activate_on_focus_time);
++        return 0;
++    case WM_MACDRV_CREATE_REMOTE_LAYER:
++        if ((data = get_win_data(hwnd)))
++        {
++            TRACE("WM_MACDRV_CREATE_REMOTE_LAYER context_id %u\n", (unsigned int)lp);
++            if (data->cocoa_window) macdrv_window_create_ca_layer_host_view(data->cocoa_window, (unsigned int)lp);
++            release_win_data(data);
++        }
+         return 0;
++    case WM_MACDRV_RELEASE_REMOTE_LAYER:
++        if ((data = get_win_data(hwnd)))
++        {
++            TRACE("WM_MACDRV_RELEASE_REMOTE_LAYER context_id %u\n", (unsigned int)lp);
++            if (data->cocoa_window) macdrv_window_release_ca_layer_host_view(data->cocoa_window, (unsigned int)lp);
++            release_win_data(data);
++        }
++        return 0;
+     }
+ 
+     FIXME("unrecognized window msg %x hwnd %p wp %lx lp %lx\n", msg, hwnd, (unsigned long)wp, lp);
+     return 0;
++}
++
++
++void macdrv_create_remote_layer(void* hwnd_ptr, unsigned int context_id)
++{
++    NtUserPostMessage((HWND)hwnd_ptr, WM_MACDRV_CREATE_REMOTE_LAYER, 0, context_id);
+ }
+ 
+ 
++void macdrv_release_remote_layer(void* hwnd_ptr, unsigned int context_id)
++{
++    NtUserPostMessage((HWND)hwnd_ptr, WM_MACDRV_RELEASE_REMOTE_LAYER, 0, context_id);
++}
++
++
+ /***********************************************************************
+  *              WindowPosChanging   (MACDRV.@)
+  */

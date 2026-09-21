@@ -1,0 +1,233 @@
+winemac: give D3DMetal a hosted swapchain for a window it does not own.
+
+D3DMetal drives this driver through the function table d3dmetal.c exports. For a new
+swapchain it calls get_win_data(), reads client_cocoa_view out of the record, and hands
+that view to view_create_metal_view() and view_get_metal_layer(); libd3dshared's
+WineSwapchainCallbacks::InitializeForHWND makes exactly those calls and no others. It
+does not check the record for NULL. A window another process owns has no record in this
+process, so a Chromium GPU process asking for a swapchain on its browser's window read
+offset 0x18 of NULL and died with ACCESS_VIOLATION: Steam's client, three times per
+start, and then a software fallback this driver cannot show either. Measured in sake on
+2026-09-20 with WINEDEBUG=+macdrv_d3dmtl,+seh,+win and a vmmap of the GPU process;
+docs/runtime.md has the numbers.
+
+The shim cannot be changed, so the glue keeps its side of the contract and changes what
+it hands over. A window that exists but is not ours now gets a record whose view is the
+client surface's, remembered in a table; view_create_metal_view() on that view acquires
+the swapchain that 0004 and 0005 host in the owner's window and hands back a view made
+for it, view_get_metal_layer() answers that view with the hosted layer, and
+view_release_metal_view() releases both. A window this process owns takes the same path
+it always did.
+
+The view has to be a real NSView. The first version of this patch returned the client
+surface itself as the "metal view" and D3DMetal died in objc_msgSend_stret with the
+surface as receiver: it asks the view for its bounds before it touches the layer.
+WineHostedMetalView is that view, sized like the window and attached to nothing, because
+nothing in this process has the window.
+
+Two assumptions this rests on, both to be read off a run: the hosted layer's device is
+the system default, as D3DMetal's is, and D3DMetal accepts a record with no
+cocoa_window, which a child window of ours already gives it. If either fails the shim
+logs "Failed to get drawable for HWND" and the window stays black; the TRACEs on the
+macdrv_d3dmtl channel say how far the six calls got.
+
+--- a/dlls/winemac.drv/cocoa_window.m
++++ b/dlls/winemac.drv/cocoa_window.m
+@@ -4375,7 +4375,30 @@
+ {
+     [(id<WineMetalSwapChain>)swapchain release];
+ }
++
+ 
++/* A view for a swapchain hosted in another process's window. D3DMetal treats what
++ * view_create_metal_view() returns as an NSView -- it asks it for its bounds through
++ * objc_msgSend_stret before it ever touches the layer -- so the hosted layer is given a
++ * view of its own. The view sits in no window, because nothing in this process has one
++ * for it, and it carries no layer: the layer comes from the swapchain, not from AppKit. */
++@interface WineHostedMetalView : NSView
++@end
++
++@implementation WineHostedMetalView
++@end
++
++macdrv_metal_view macdrv_create_hosted_metal_view(CGRect frame)
++{
++    __block WineHostedMetalView* view;
++
++    OnMainThread(^{
++        view = [[WineHostedMetalView alloc] initWithFrame:NSRectFromCGRect(frame)];
++    });
++
++    return (macdrv_metal_view)view;
++}
++
+ void macdrv_window_create_ca_layer_host_view(macdrv_window w, unsigned int context_id,
+                                              CGRect frame, double zpos, int zpos_valid)
+ {
+--- a/dlls/winemac.drv/macdrv_cocoa.h
++++ b/dlls/winemac.drv/macdrv_cocoa.h
+@@ -565,6 +565,7 @@
+                                                                  CGRect bounds);
+ extern macdrv_metal_layer macdrv_swapchain_get_layer(macdrv_metal_swapchain swapchain);
+ extern void macdrv_destroy_swapchain(macdrv_metal_swapchain swapchain);
++extern macdrv_metal_view macdrv_create_hosted_metal_view(CGRect frame);
+ extern void macdrv_window_create_ca_layer_host_view(macdrv_window w, unsigned int context_id,
+                                                     CGRect frame, double zpos, int zpos_valid);
+ extern void macdrv_window_release_ca_layer_host_view(macdrv_window w, unsigned int context_id);
+--- a/dlls/winemac.drv/d3dmetal.c
++++ b/dlls/winemac.drv/d3dmetal.c
+@@ -92,6 +92,79 @@
+ void OnMainThread(dispatch_block_t block);
+ static void cf_client_surface_release(CFAllocatorRef allocator, const void *client_surface);
+ 
++/* Client surfaces made for windows another process owns: by the cocoa_view D3DMetal is
++ * handed in the window record, and by the view it is handed back as its "metal view".
++ *
++ * D3DMetal reads client_cocoa_view out of the record get_win_data() returns without
++ * checking the record for NULL; with a window of another process that read killed
++ * Steam's GPU process on every start (docs/runtime.md, 2026-09-20). A WineMetalView on
++ * that cocoa_view would never be shown either, since nothing in this process has the
++ * NSWindow. So the view is remembered here, view_create_metal_view() answers it with a
++ * swapchain hosted in the owner's window, and the two calls after that are answered from
++ * the same table. */
++static pthread_mutex_t remote_mutex = PTHREAD_MUTEX_INITIALIZER;
++static CFMutableDictionaryRef remote_views;    /* client cocoa_view -> struct macdrv_client_surface* */
++static CFMutableDictionaryRef remote_handles;  /* hosted metal view -> struct macdrv_client_surface* */
++
++static void remember_remote(CFMutableDictionaryRef *table, const void *key, struct macdrv_client_surface *surface)
++{
++    pthread_mutex_lock(&remote_mutex);
++    if (!*table) *table = CFDictionaryCreateMutable(NULL, 0, NULL, NULL);
++    CFDictionarySetValue(*table, key, surface);
++    pthread_mutex_unlock(&remote_mutex);
++}
++
++static struct macdrv_client_surface *remote_lookup(CFMutableDictionaryRef table, const void *key)
++{
++    struct macdrv_client_surface *surface = NULL;
++    pthread_mutex_lock(&remote_mutex);
++    if (table && key) surface = (struct macdrv_client_surface *)CFDictionaryGetValue(table, key);
++    pthread_mutex_unlock(&remote_mutex);
++    return surface;
++}
++
++static void forget_remote(struct macdrv_client_surface *surface, const void *handle)
++{
++    pthread_mutex_lock(&remote_mutex);
++    if (remote_handles) CFDictionaryRemoveValue(remote_handles, handle);
++    if (remote_views) CFDictionaryRemoveValue(remote_views, surface->cocoa_view);
++    pthread_mutex_unlock(&remote_mutex);
++}
++
++/* The record for a window that exists but belongs to another process. Only what
++ * D3DMetal reads on the way to view_create_metal_view() is real; the rest is what a
++ * child window of ours would have carried. A Chromium child has no non-client area, so
++ * the client rectangle is the window rectangle. */
++static struct d3dmetal_macdrv_win_data *remote_win_data(HWND hwnd, struct macdrv_client_surface *client_surface)
++{
++    struct d3dmetal_macdrv_win_data *d3dm_data;
++    HWND parent = NtUserGetAncestor(hwnd, GA_PARENT);
++    UINT dpi = NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI);
++    RECT rect;
++
++    if (!(d3dm_data = calloc(1, sizeof(*d3dm_data))))
++    {
++        client_surface_release(&client_surface->client);
++        return NULL;
++    }
++
++    NtUserGetWindowRect(hwnd, &rect, dpi);
++    if (parent && parent != NtUserGetDesktopWindow())
++        NtUserMapWindowPoints(0, parent, (POINT *)&rect, 2, dpi);
++
++    d3dm_data->hwnd = hwnd;
++    d3dm_data->client_cocoa_view = client_surface->cocoa_view;
++    d3dm_data->window_rect = rect;
++    d3dm_data->whole_rect = rect;
++    d3dm_data->client_rect = rect;
++    d3dm_data->on_screen = 1;
++
++    remember_remote(&remote_views, client_surface->cocoa_view, client_surface);
++    TRACE("window %p of another process: view %p rect %s\n", hwnd, client_surface->cocoa_view,
++          wine_dbgstr_rect(&rect));
++    return d3dm_data;
++}
++
+ static void my_macdrv_init_display_devices(BOOL p1)
+ {
+     TRACE("macdrv_init_display_devices %d - no-op\n", p1);
+@@ -115,6 +188,7 @@
+     data = get_win_data(hwnd);
+     if (!data)
+     {
++        if (NtUserIsWindow(hwnd)) return remote_win_data(hwnd, client_surface);
+         client_surface_release((struct client_surface *)client_surface);
+         return NULL;
+     }
+@@ -160,7 +234,7 @@
+     if (!data)
+         return;
+ 
+-    release_win_data(data->padding[0]);
++    if (data->padding[0]) release_win_data(data->padding[0]);
+     free(data);
+ }
+ 
+@@ -184,19 +258,56 @@
+ 
+ static macdrv_metal_view my_macdrv_view_create_metal_view(macdrv_view v, macdrv_metal_device d)
+ {
++    struct macdrv_client_surface *surface;
++    macdrv_metal_view hosted;
++    HWND hwnd;
++    RECT rect;
++
+     TRACE("macdrv_view_create_metal_view %p %p\n", v, d);
+-    return macdrv_view_create_metal_view(v, d);
++
++    if (!(surface = remote_lookup(remote_views, v))) return macdrv_view_create_metal_view(v, d);
++
++    /* The swapchain brings its own device and layer; the layer is exported through a
++     * CAContext and hosted by the process that owns the window, which is the only place
++     * it can be seen from. D3DMetal gets a view of its own for it, sized like the window. */
++    hwnd = surface->client.hwnd;
++    if (!macdrv_client_surface_acquire_metal_swapchain(surface))
++    {
++        ERR("no hosted swapchain for window %p of another process\n", hwnd);
++        return NULL;
++    }
++    if (!NtUserGetClientRect(hwnd, &rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI))) memset(&rect, 0, sizeof(rect));
++    if (!(hosted = macdrv_create_hosted_metal_view(cgrect_from_rect(rect)))) return NULL;
++
++    remember_remote(&remote_handles, hosted, surface);
++    TRACE("window %p of another process: hosted swapchain %p, view %p\n", hwnd, surface->metal_swapchain, hosted);
++    return hosted;
+ }
+ 
+ static macdrv_metal_layer my_macdrv_view_get_metal_layer(macdrv_metal_view v)
+ {
++    struct macdrv_client_surface *surface;
++
+     TRACE("macdrv_view_get_metal_layer %p\n", v);
++
++    if ((surface = remote_lookup(remote_handles, v)))
++        return macdrv_swapchain_get_layer(surface->metal_swapchain);
+     return macdrv_view_get_metal_layer(v);
+ }
+ 
+ static void my_macdrv_view_release_metal_view(macdrv_metal_view v)
+ {
++    struct macdrv_client_surface *surface;
++
+     TRACE("macdrv_view_release_metal_view %p\n", v);
++
++    if ((surface = remote_lookup(remote_handles, v)))
++    {
++        forget_remote(surface, v);
++        macdrv_view_release_metal_view(v);
++        client_surface_release(&surface->client);
++        return;
++    }
+     return macdrv_view_release_metal_view(v);
+ }
+ 

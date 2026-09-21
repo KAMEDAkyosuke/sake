@@ -95,9 +95,24 @@ and a process is recognised by the executable the title names. The cost is that 
 empty until somebody adds something to it, whether the game arrived from an installer or
 out of a CrossOver bottle.
 
-Still to come here: what else a title profile has to carry once a second one exists. One
-data point is still one data point, and nothing yet knows that starting Diablo IV directly
-fails on the token — `runtime.md` says so, the app does not.
+**Steam was the second title, on 2026-09-20, and the first the engine could not show at
+all.** Its installer ran through the app, the client updated itself and came up as a black
+700×440 window on every start, whatever flags it was given. The cause was not in the title
+and not in the flags: the client's browser process owns the window and its GPU process draws
+into it, and the winemac.drv in CrossOver 26.3.0's Wine 11.0 has no way to carry rendering
+across that line — D3DMetal's shim was handed a NULL window record and dereferenced it,
+Vulkan drew into a view nothing hosted, and software compositing drew from the wrong
+process. Upstream Wine solved the top-level half in wine-11.11; sake carries that, the
+child-window half from Wine bug 60263, and its own change to the D3DMetal glue, as four
+patches in `patches/`. `runtime.md` has the measurement and what to look for.
+
+What the second title taught about profiles: Steam needed **nothing** per-title once the
+engine could host a swapchain across processes — no flags, no environment, no registry. The
+three Chromium flags sake offers are Battle.net's, measured on its 32-bit CEF, and Steam's
+client cannot even take them. So a title profile is still name, executable and arguments,
+and the argument suggestion is a heuristic for one launcher rather than a rule for Chromium.
+Nothing yet knows that starting Diablo IV directly fails on the token — `runtime.md` says
+so, the app does not.
 
 ### Phase 4 — the GUI proper (under way)
 
@@ -201,7 +216,10 @@ easier to read than it was interleaved with `configure` flags.
   that. Both went away.)
 - **A built engine does not pick up a change to a patch.** `bin/wine` existing is what says
   the Wine step is done, so changing something in `patches/` means deleting that by hand and
-  rebuilding. The D3DMetal half of this went away on 2026-09-19 — a rebuild now drops that
+  rebuilding. **And the rebuild then fails to recognise stacked patches as applied**
+  (2026-09-20): `WinePatcher` asks `patch` to reverse each one alone, which a patch under
+  two others cannot do. `wine-build.md` has the hand procedure; the check needs to learn
+  that patches on the same file form a stack that is applied and reversed in order. The D3DMetal half of this went away on 2026-09-19 — a rebuild now drops that
   step back to unfinished, because it asks whether the DLLs are Apple's rather than whether
   the framework is there — but nothing yet knows that a patch has changed under it.
 - **How much to generalise beyond one title.** The prototype hard-coded Diablo IV in several
@@ -225,4 +243,6 @@ easier to read than it was interleaved with `configure` flags.
   the app target gets tests of its own.
 - **Where the CrossOver version lives.** It is a knob users may need — a newer CrossOver may
   fix or break a given game — but exposing it invites them to pick a combination nobody has
-  run.
+  run. Steam gave the knob a concrete reason on 2026-09-20: two of sake's patches are
+  upstream Wine commits that CrossOver's next Wine rebase will contain, and the day the
+  tarball sake builds is based on wine-11.11 or later they are to be deleted, not rebased.

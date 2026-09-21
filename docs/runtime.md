@@ -67,6 +67,13 @@ Measured against a real Battle.net install on 2026-09-20: the exe is
 so looking only beside the program finds nothing and the flags would never be offered for
 the one title that is known to need them.
 
+**Those three flags are Battle.net's, not Chromium's in general.** Steam's client, the second
+Chromium app through sake (2026-09-20), takes none of them: `steam.exe` consumes whatever it
+is given and passes nothing through to `steamwebhelper.exe`, and Steam's own switch list has
+no in-process-GPU option left. Its `libcef.dll` also sits three directories down, so the
+heuristic never offers them for it — correctly, as it turns out. What Steam needed was in
+the driver, not in the arguments; the section on Steam below has the measurement.
+
 ### `WINE_SIMULATE_WRITECOPY=1` — or Battle.net never fetches the login page
 
 CodeWeavers' `CW Hack 22996`. With it, a page that has been `VirtualProtect`ed away from
@@ -175,11 +182,13 @@ errors, no "GL is disabled" — and `battle.net-*.log` ended
 is visible" is not claimed. What is claimed is that the page was requested, came back 200,
 and the renderer that draws it was still alive seventy-five seconds later.
 
-## Two patches to Wine's own code
+## Two patches to ntdll
 
-sake carries two patches, in `patches/`, both LGPL-2.1-or-later because both are derivatives
-of Wine. They came from the prototype unchanged and go in before configure; the build side of
-that is in `wine-build.md` and the licence side in `licensing.md`.
+sake carries six patches in `patches/`, all LGPL-2.1-or-later because all are derivatives of
+Wine. The two in ntdll are this section's; they came from the prototype unchanged and go in
+before configure. The four in winemac.drv arrived with Steam on 2026-09-20 and are in the
+Steam section below. The build side of patching is in `wine-build.md` and the licence side in
+`licensing.md`.
 
 **sake measured both on 2026-09-19**, against its own engine and bottle, the day it started
 carrying them. The prototype's numbers are kept beside sake's because they are the
@@ -291,6 +300,88 @@ macOS, and 2.32.10 fixed thumbstick range and calibration for Switch Pro Control
 name. If a pad misbehaves, 2.30.12 is the version known-good under CrossOver and the right
 thing to bisect against. Not SDL3 — Wine looks for pkg-config's `sdl2` and `SDL_Init` in
 `libSDL2-2.0*`.
+
+## Steam: the client draws in one process and owns its window in another
+
+Measured in sake on 2026-09-20 against the default bottle, with Steam's 64-bit client (build
+1788652215) installed through the app and the engine built from CrossOver 26.3.0's sources
+with D3DMetal 4.0b2: thirteen starts, seven of them traced, six windows photographed.
+Everything in this section is sake's own measurement.
+
+**What a start looked like.** The client comes up as a 700×440 window called "Sign in to
+Steam" that is black to the last pixel — captured by window id on three starts, 1400×880
+pixels at 2×, 100.00% black, one colour. Steam's `cef_log.txt` says why: `GPU process exited
+unexpectedly: exit_code=-1073741819` three times per webhelper, Steam restarting the webhelper
+once, then `Disabling GPU acceleration: Disabled/CrashCount` and a SwiftShader GPU process
+compositing in software, into the same black.
+
+**Who owns what.** `WINEDEBUG=+pid,+win` shows the browser process of steamwebhelper creating
+every window the client shows: an `SDL_app` top-level, a `CefBrowserWindow` inside it, a
+`Chrome_WidgetWin_1` inside that (700×440, the compositor's target) and a
+`Chrome_RenderWidgetHostHWND`. The GPU process, `steamwebhelper.exe --type=gpu-process`,
+creates no window at all, and `steam.exe` holds only its bootstrap and tray helpers. The
+swapchain is therefore asked for by one process on a window another process owns.
+
+**Where it died.** On the `macdrv_d3dmtl` channel the GPU process makes exactly one hook call,
+`get_win_data 0x…`, and the next line is `c0000005` reading address `0x18`, repeated 255
+times as the crash handler re-faulted. winemac.drv keeps its window records per process, so
+`get_win_data` returned NULL for the browser's window; `0x18` is `client_cocoa_view` in the
+record D3DMetal expects; and `vmmap` on a live GPU process put the faulting `rip` inside
+`libd3dshared.dylib`, whose `WineSwapchainCallbacks::InitializeForHWND` reads that field
+straight after the call — `movq 0x18(%rcx), %rcx`, with no check for NULL. The 254 faults
+after the first are `RtlVirtualUnwind2` writing to a NULL out-parameter while unwinding
+through the shim's unix-side frame: Wine cannot dispatch an exception raised inside a dylib
+the PE side called into, so crashpad never writes its dump and the process exits with the
+exception code.
+
+**No flag reaches it.** The `--use-gl=angle --use-angle=vulkan --in-process-gpu` the title
+had been given are consumed by `steam.exe` and never appear on the webhelper's command line;
+`webhelper.txt` prints that line. Steam's own switches live in `steamclient64.dll`, not
+`steam.exe` — `strings` on the exe finds seven and misleads — and this build has 45 `-cef-*`
+options. What each relevant one did, 45 seconds per start, window captured by id:
+
+| start | GPU process | the window |
+|---|---|---|
+| no arguments | dies at the first window, three times, then software | 100% black |
+| `-cef-use-vulkan` | lives; 320 frames on MoltenVK | 100% black: `macdrv_client_surface_update` finds no record for the top-level and never attaches the view. This route has a different shape from D3D11's: `+win` shows ANGLE's Vulkan backend making the GPU process create a child window of its own (`Chrome_WidgetWin_0`, plus an `ANGLE DisplayVkWin32 … Intermediate Window Class`), which the browser then re-parents into its tree with three `WM_WINE_SETPARENT`. The swapchain is on a window this process owns under a root it does not, and the patches below do not host that case |
+| `-cef-disable-gpu-compositing` | lives; rasterises on D3DMetal, composites in software | 100% black: the GPU process draws into the browser's window with GDI, and win32u gives a DC on another process's top-level no surface (`dce.c`). The browser flushed its own surface twice in 45 s and never called `UpdateLayeredWindow` |
+| `-cef-disable-gpu` | lives; SwiftShader | black, the same path |
+| `-cef-disable-browser-underlays`, `D3DM_NO_WINDOW=1` | no change | no change |
+
+`-cef-in-process-gpu` and `-cef-single-process`, which would have made this one process the
+way `--in-process-gpu` does for Battle.net, are no longer in the binary.
+
+**The fix is in the driver**, as four patches in `patches/`, each with its history in its
+header. Upstream Wine's `52e03c61` and `1a63b0d7` (both by CodeWeavers, merged for
+wine-11.11) give a process a Metal swapchain for a top-level window another process owns:
+the layer is exported through a `CAContext` and the owner hosts it in its window with a
+`CALayerHost`. The reference implementation attached to Wine bug 60263 takes that to child
+windows, posting the context to the child's root and keeping the hosted layer at the child's
+rectangle. sake's own change is to `d3dmetal.c`: D3DMetal's `get_win_data` for a window this
+process does not own now gets a record whose view leads to that hosted swapchain, where it
+used to get NULL. The view has to be a real `NSView`: the first attempt handed D3DMetal the
+client surface itself and it died in `objc_msgSend_stret`, asking that pointer for its
+bounds — the patch header has the register dump.
+
+**On the rebuilt engine, the same day, a start with no arguments works.** No `c0000005` in
+any process. The GPU process makes all six glue calls and they read, on `+macdrv_d3dmtl`,
+`get_win_data 0x20112` → `remote_win_data window 0x20112 of another process: view … rect
+(0,0)-(700,440)` → `create_metal_device` → `view_create_metal_view … hosted swapchain …,
+view …` → `view_get_metal_layer` → `release_win_data`; `+msg` shows it posting message
+`80001002` to the browser's root, and the browser logs `WM_MACDRV_CREATE_REMOTE_LAYER child
+0x20112 context_id 706998962` on receipt. Steam's GPU report stays `ANGLE_D3D11` with
+`gpu_compositing: enabled`, one GPU process for the whole run. The window, 45 seconds in:
+0.00% black over 1400×880 pixels, 142 colours in a sample, and the sign-in form — logo,
+account name, password, Sign in, the QR code — legible in the capture. Thirty seconds in it
+was 630×397 with the desktop showing through, so the first frame arrives some seconds after
+the layer host does. Nobody had signed in yet when this was written.
+
+One instrument changed with the fix: `screencapture -l <id>` on a window that hosts another
+process's layer fails with "could not create image from window", where the black windows
+captured fine. The capture above is a full-screen shot taken with the window raised for a
+second and cropped to its bounds. The Vulkan route (`-cef-use-vulkan`) is still black on the
+rebuilt engine, for the reason in the table: its swapchain is on a window the GPU process
+owns under a root it does not, and nothing hosts that shape yet.
 
 ## Killing wineserver leaves the prefix's own services running
 
@@ -434,3 +525,26 @@ started. Cut `argv[0]` at its first `.exe` and check what that ends with.
   `__wine_syscall_dispatcher`.
 - **Check that the control actually ran.** A control run whose log is zero bytes did not
   reproduce anything; it failed to start.
+- **`WINEDEBUG=+pid` before anything else with more than one process.** Without it every
+  trace prefix is a thread id, and four Chromium processes cannot be told apart. Learned on
+  Steam, 2026-09-20.
+- **`+macdrv_d3dmtl` is D3DMetal's half of the conversation.** It is the channel of the glue
+  in `dlls/winemac.drv/d3dmetal.c`, the only code D3DMetal calls in Wine. A `get_win_data`
+  with no `create_metal_device` after it means winemac returned NULL, and the six calls of a
+  swapchain's creation read like a checklist.
+- **`+win` names the owner of an HWND**, class and parent included, which is how "whose window
+  is the GPU process drawing into" got answered.
+- **A fault inside a dylib has no module name in `+seh`.** `vmmap` a live process for the
+  `__TEXT` ranges of `libd3dshared`, `D3DMetal` and `winemac.so`, then `objdump -d` the dylib
+  at `rip` minus its start; `+loaddll` only knows PE modules.
+- **Crashpad eats the crash.** A CEF process never reaches `winedbg --auto`, so there is no
+  backtrace to wait for; `+seh` is the only view of where it died.
+- **A Wine window can be photographed even behind the terminal.** Once Screen Recording is
+  granted to the terminal, `screencapture -x -o -l <CGWindowID>` captures an occluded window,
+  and `CGWindowListCopyWindowInfo` gives the id (owner `wine`). A full-screen capture shows
+  whatever is in front, which here is always the terminal. This is what turned "black" from a
+  report into 100.00% of 1,232,000 pixels. **Not once the window hosts another process's
+  layer**: then `-l` fails with "could not create image from window" and `-R` never worked
+  here at all, so raise the window (`set frontmost of (first process whose unix id is …)`
+  through System Events), take the full screen, crop to the window's bounds, and hand focus
+  back to the terminal.

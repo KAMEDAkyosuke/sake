@@ -63,17 +63,26 @@ private func read(_ tree: URL) throws -> String {
     try String(contentsOf: tree.appending(path: "dlls/ntdll/unix/loader.c"), encoding: .utf8)
 }
 
-@Test func theRepositoryCarriesTheTwoPatchesAndSaysTheyAreNotMIT() throws {
+@Test func theRepositoryCarriesTheSixPatchesAndSaysTheyAreNotMIT() throws {
     let patcher = WinePatcher(directory: repositoryPatches)
     let patches = try patcher.patches()
 
     #expect(patches.map(\.id) == [
         "0001-ntdll-libd3dshared-fallback.patch",
         "0002-ntdll-read-BOOLEAN-syscall-arguments-as-the-Windows-ABI-defines-them.patch",
+        "0003-winemac-factor-out-MetalViewSwapChain.patch",
+        "0004-winemac-cross-process-MetalViewSwapChain-via-CALayerHost.patch",
+        "0005-winemac-cross-process-child-window-swapchains.patch",
+        "0006-winemac-give-D3DMetal-a-hosted-swapchain-for-a-window-it-does-not-own.patch",
     ])
-    // Each one says what it does on its first line, which is where the reasoning starts.
+    // Each one says what it does on its first line, which is where the reasoning starts,
+    // and names the module it changes the way a Wine commit does.
     for patch in patches {
-        #expect(patch.subject.hasPrefix("ntdll: "), "\(patch.id): \(patch.subject)")
+        let subject = patch.subject
+        #expect(
+            subject.hasPrefix("ntdll: ") || subject.hasPrefix("winemac: "),
+            "\(patch.id): \(subject)"
+        )
     }
 
     // A patch against Wine is a derivative of Wine, whatever this repository's own licence
@@ -83,7 +92,7 @@ private func read(_ tree: URL) throws -> String {
     #expect(licence.contains("Version 2.1"))
 }
 
-@Test func nothingOutsideNtdllIsPatched() throws {
+@Test func nothingOutsideNtdllAndTheMacDriverIsPatched() throws {
     for patch in try WinePatcher(directory: repositoryPatches).patches() {
         let text = try String(contentsOf: patch.url, encoding: .utf8)
         let targets = text.split(separator: "\n")
@@ -92,9 +101,13 @@ private func read(_ tree: URL) throws -> String {
 
         #expect(!targets.isEmpty, "\(patch.id) patches nothing")
         for target in targets {
-            // Widening this is a decision, not an accident: everything measured so far is
-            // in ntdll, and docs/runtime.md lists what else is exposed and untested.
-            #expect(target.hasPrefix("dlls/ntdll/"), "\(patch.id) reaches \(target)")
+            // Widened from ntdll alone on 2026-09-20, as a decision: Steam's client draws
+            // in one process and owns its window in another, and the driver that has to
+            // carry that across is winemac.drv. docs/runtime.md has the measurement.
+            #expect(
+                target.hasPrefix("dlls/ntdll/") || target.hasPrefix("dlls/winemac.drv/"),
+                "\(patch.id) reaches \(target)"
+            )
         }
     }
 }

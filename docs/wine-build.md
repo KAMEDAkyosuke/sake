@@ -56,12 +56,15 @@ Notes that cost time to find:
 - The prototype ran newer gnutls, MoltenVK, SDL2 and D3DMetal than CrossOver ships, and that
   was deliberate, not drift.
 
-## Two patches go in before configure
+## The patches go in before configure
 
-`patches/` holds the changes sake makes to Wine's own code — two of them, both in ntdll,
-both LGPL-2.1-or-later rather than this repository's MIT. What each one is for, and how to
-tell that it worked, is in `runtime.md`; why they are a separate directory is in
-`licensing.md`.
+`patches/` holds the changes sake makes to Wine's own code — six of them as of 2026-09-20,
+two in ntdll and four in winemac.drv, all LGPL-2.1-or-later rather than this repository's
+MIT. Two of the four are upstream Wine commits carried only until the CrossOver sources sake
+builds catch up with wine-11.11, one is the reference implementation attached to Wine bug
+60263, and the rest are sake's own; each file's header says which it is and where it came
+from. What each one is for, and how to tell that it worked, is in `runtime.md`; why they are
+a separate directory is in `licensing.md`.
 
 They are applied to the unpacked source tree, which is the only copy sake has of it, so the
 build has one step that is not out of tree. Whether a patch is already in is asked of
@@ -69,9 +72,15 @@ build has one step that is not out of tree. Whether a patch is already in is ask
 file, because the tarball is unpacked once and never re-extracted and a marker would have to
 be invalidated by hand every time a patch changed.
 
-**A build with no patches is stopped rather than allowed.** Wine without them configures,
-compiles, installs and passes every check in this document. What it cannot do is start a
-game, and that is a long way downstream of here.
+**That check is wrong for patches that stack.** Measured 2026-09-20, on the second build
+after the four winemac.drv patches went in: 0003 does not reverse on its own once 0004 and
+0005 have changed the lines around it, does not apply forward either, and the build stopped
+with "applies to neither" before configure. The two ntdll patches never showed this because
+they touch different regions. Until the check is taught about stacks, a rebuild after the
+first needs the driver patches reversed by hand from the top down —
+`patch -R -p1 -d sources/wine < patches/0005…`, then 0004, then 0003 — which leaves the tree
+pristine for those files and lets the build apply them again in order. A patch that reverses
+cleanly on its own, as 0001 and 0002 do, is unaffected.
 
 An engine that is already built does not pick a new patch up: `make install` is what writes
 `bin/wine`, and its presence is what says the step is done. Changing a patch means deleting
