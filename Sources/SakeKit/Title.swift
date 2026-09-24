@@ -44,12 +44,15 @@ public struct Title: Sendable, Hashable, Codable, Identifiable {
     /// What ``Bottle/environment(inheriting:)`` sets for itself, and a title may not.
     /// `WINE_SIMULATE_WRITECOPY` turned off is a Battle.net that never loads its login
     /// page, and a `WINEPREFIX` of your own is a run in somebody else's bottle.
+    /// `WINEMSYNC` is the bottle's because wineserver holds it: set by one title, it makes
+    /// the prefix refuse everything else. See ``BottleSettings/msync``.
     public static let reservedEnvironmentNames = [
         "WINEPREFIX",
         "WINEDLLOVERRIDES",
         "WINEDEBUG",
         "WINE_SIMULATE_WRITECOPY",
         "CX_APPLEGPTK_LIBD3DSHARED_PATH",
+        "WINEMSYNC",
     ]
 
     public static func reservedNames(in environment: [String: String]) -> [String] {

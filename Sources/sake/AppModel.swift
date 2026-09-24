@@ -70,6 +70,8 @@ final class AppModel {
     /// What a bottle occupies, as it looks from outside. Keyed by name and filled only for
     /// what is on screen: see ``measureSelectedBottle()``.
     var bottleSizes: [String: Int64] = [:]
+    /// Read in ``survey()``: the file is on disk, and a view cannot observe a file.
+    var bottleSettings: [String: BottleSettings] = [:]
 
     var importSources: [CrossOverBottle] = []
     var importSource: CrossOverBottle?
@@ -263,6 +265,7 @@ final class AppModel {
             )
         }
         titles = Dictionary(uniqueKeysWithValues: bottles.map { ($0.name, Title.installed(in: $0)) })
+        bottleSettings = Dictionary(uniqueKeysWithValues: bottles.map { ($0.name, $0.settings) })
 
         // A selection that no longer names anything -- the first survey, or a bottle just
         // made -- lands on something rather than leaving the detail pane empty.
@@ -359,6 +362,25 @@ final class AppModel {
                 }
                 self.selection = .bottle(renamed.name)
                 self.importTarget = renamed.name
+            } catch {
+                self.bottleStatus[bottle.name] = .failed(error.localizedDescription)
+            }
+        }, then: survey)
+    }
+
+    /// Why this bottle's settings cannot be changed now, as a sentence, or `nil` when they
+    /// can. Refused for the reason a rename is: changing one stops the prefix.
+    func settingsProblem(_ bottle: String) -> String? {
+        running(in: bottle).map { "\($0.name) is running in it. Stop it first." }
+    }
+
+    func setMsync(_ on: Bool, in bottle: Bottle) {
+        guard settingsProblem(bottle.name) == nil else { return }
+        var settings = bottle.settings
+        settings.msync = on
+        changingBottle.start({
+            do {
+                try await bottle.change(to: settings)
             } catch {
                 self.bottleStatus[bottle.name] = .failed(error.localizedDescription)
             }
@@ -652,9 +674,12 @@ final class AppModel {
         let environment = Title.environment(from: typedTitleEnvironment)
         let reserved = Title.reservedNames(in: environment)
         guard reserved.isEmpty else {
+            let msync = reserved.contains("WINEMSYNC")
+                ? " msync is a setting of the whole bottle, on the bottle's own page."
+                : ""
             addTitleProblem = """
                 \(reserved.formatted()) \(reserved.count == 1 ? "is" : "are") sake's own and \
-                cannot be set here — see docs/runtime.md.
+                cannot be set here — see docs/runtime.md.\(msync)
                 """
             return nil
         }

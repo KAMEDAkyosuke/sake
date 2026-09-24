@@ -122,6 +122,14 @@ was added that way on 2026-09-21 and the tests pin it.
 shows what somebody added to it and nothing else, so the file is the answer rather than one
 half of it.
 
+### And so do the bottle's own settings
+
+`sake-bottle.json`, beside it, holds what is set for the bottle as a whole — as of
+2026-09-23, whether it runs with msync, which is the bottle's rather than a title's for the
+reason `runtime.md` gives. It is there for the reasons `sake-titles.json` is, and follows
+the same rule about fields: optional going in, and a bottle nobody changed a setting on has
+no file at all.
+
 ## Importing a game costs nothing
 
 A bottle with Diablo IV in it is 100 GB, and the same game is already in a CrossOver bottle
