@@ -49,6 +49,19 @@ public struct TitleLauncher: Sendable {
                 \(title.executable) in this bottle any more.
                 """
         }
+        // A title saved before the name was reserved still carries it, and the bottle's
+        // own value would win without a word -- a run that looks as if it had been set.
+        let reserved = Title.reservedNames(in: title.environment)
+        if !reserved.isEmpty {
+            let msync = reserved.contains("WINEMSYNC")
+                ? ", and turn msync on in the bottle's own page if you want it"
+                : ""
+            return """
+                \(reserved.formatted()) \(reserved.count == 1 ? "is" : "are") in this \
+                title's options but \(reserved.count == 1 ? "belongs" : "belong") to the \
+                bottle. Take \(reserved.count == 1 ? "it" : "them") out in Options…\(msync).
+                """
+        }
         return nil
     }
 

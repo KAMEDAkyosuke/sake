@@ -108,6 +108,9 @@ public struct Bottle: Sendable, Equatable {
         if FileManager.default.fileExists(atPath: paths.d3dSharedLibrary.path) {
             environment["CX_APPLEGPTK_LIBD3DSHARED_PATH"] = paths.d3dSharedLibrary.path
         }
+        // Removed rather than left alone when off: sake started from a shell that exports
+        // it would otherwise start the server with msync and every tool without.
+        environment["WINEMSYNC"] = settings.msync ? "1" : nil
         return environment
     }
 

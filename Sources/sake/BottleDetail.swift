@@ -18,12 +18,16 @@ struct BottleDetail: View {
     /// How many things a CrossOver bottle has that this one does not, or `nil` when that
     /// has not been worked out for this bottle.
     let importCandidates: Int?
+    let settings: BottleSettings
+    /// Why the settings cannot be changed now, as a sentence. `nil` when they can.
+    let settingsBlockedBy: String?
     let importing: () -> Void
     let installing: () -> Void
     let addingTitle: () -> Void
     let renaming: () -> Void
     let deleting: () -> Void
     let runTool: (WineTool) -> Void
+    let settingMsync: (Bool) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -86,6 +90,19 @@ struct BottleDetail: View {
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("msync", isOn: Binding(get: { settings.msync }, set: { settingMsync($0) }))
+                    .disabled(settingsBlockedBy != nil)
+                Text(settingsBlockedBy ?? """
+                    For everything in this bottle at once, because Wine refuses a program \
+                    that disagrees with the rest of the bottle about it. Changing it stops \
+                    whatever is running here.
+                    """)
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)

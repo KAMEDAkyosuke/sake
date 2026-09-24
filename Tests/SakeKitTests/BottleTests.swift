@@ -509,3 +509,70 @@ private func trash(in paths: Paths) -> (can: URL, trash: Trash) {
     // It still went after the server, which is the half that needs WINEPREFIX set.
     #expect(recorded("wineserver.args", in: paths) == ["-k"])
 }
+
+/// Measured 2026-09-23: a client whose `WINEMSYNC` disagrees with the running wineserver
+/// exits 1 during startup, saying so only at `err`. So the value is the bottle's and goes
+/// on everything the bottle runs -- a tool as much as a title.
+@Test func msyncIsTheBottlesAndReachesEverythingItRuns() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths).create())
+    let bottle = Bottle(paths: paths)
+
+    #expect(bottle.settings == BottleSettings())
+    #expect(bottle.environment(inheriting: [:])["WINEMSYNC"] == nil)
+    // Off means off, whatever the shell sake was started from exported.
+    #expect(bottle.environment(inheriting: ["WINEMSYNC": "1"])["WINEMSYNC"] == nil)
+
+    try await bottle.change(to: BottleSettings(msync: true))
+
+    #expect(bottle.settings.msync)
+    #expect(bottle.environment(inheriting: [:])["WINEMSYNC"] == "1")
+    #expect(bottle.command("winecfg").environment?["WINEMSYNC"] == "1")
+}
+
+/// What was running was started under the old value, and a wineserver left up with it
+/// refuses every program started under the new one.
+@Test func changingASettingTakesTheBottleDownAndKeepingOneDoesNot() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths).create())
+    try FileManager.default.removeItem(at: paths.engine.appending(path: "bin/wineserver.prefixes"))
+    let bottle = Bottle(paths: paths)
+
+    try await bottle.change(to: BottleSettings())
+    #expect(recorded("wineserver.prefixes", in: paths).isEmpty)
+
+    try await bottle.change(to: BottleSettings(msync: true))
+    #expect(recorded("wineserver.prefixes", in: paths) == [bottle.url.path])
+}
+
+@Test func theSettingsTravelWithARename() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths).create())
+    try await Bottle(paths: paths).change(to: BottleSettings(msync: true))
+
+    let renamed = try await Bottle(paths: paths).rename(to: "spare")
+
+    #expect(renamed.settings.msync)
+}
+
+/// Optional going in, for the reason `sake-titles.json`'s fields are: a key added later must
+/// not make a file already on disk unreadable.
+@Test func aSettingsFileWithoutAKeyStillLoads() async throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeFakeEngine(in: paths)
+    _ = await collect(BottleBuilder(paths: paths).create())
+    let bottle = Bottle(paths: paths)
+
+    try Data("{}".utf8).write(to: bottle.settingsURL)
+    #expect(bottle.settings == BottleSettings())
+
+    try Data(#"{ "msync" : true, "later" : 1 }"#.utf8).write(to: bottle.settingsURL)
+    #expect(bottle.settings.msync)
+}

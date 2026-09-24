@@ -368,3 +368,25 @@ private func collect(_ stream: AsyncStream<LaunchEvent>) async -> [LaunchEvent] 
     #expect(environment?["WINE_SIMULATE_WRITECOPY"] == "1")
     #expect(Title.reservedNames(in: hud.environment) == ["WINE_SIMULATE_WRITECOPY"])
 }
+
+/// A title saved before `WINEMSYNC` was reserved still has it, and the bottle's value would
+/// win without a word. Play is refused with the reason instead.
+@Test func aTitleStillCarryingWhatIsNowTheBottlesIsNotStarted() throws {
+    let paths = temporaryRoot()
+    defer { remove(paths) }
+    try makeEngineAndBottle(paths)
+
+    let old = Title(
+        id: battleNet.id,
+        name: battleNet.name,
+        executable: battleNet.executable,
+        arguments: battleNet.arguments,
+        environment: ["WINEMSYNC": "1", "MTL_HUD_ENABLED": "1"]
+    )
+
+    #expect(Title.reservedNames(in: old.environment) == ["WINEMSYNC"])
+    let blocker = TitleLauncher(paths: paths, title: old).missingPrerequisite
+    #expect(blocker?.contains("WINEMSYNC") == true)
+    #expect(blocker?.contains("msync") == true)
+    #expect(TitleLauncher(paths: paths, title: battleNet).missingPrerequisite == nil)
+}

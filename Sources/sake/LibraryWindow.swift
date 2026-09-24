@@ -172,12 +172,15 @@ struct LibraryWindow: View {
                     canImport: !model.importSources.isEmpty,
                     canRunTools: WineTool.missingPrerequisite(in: bottle) == nil,
                     importCandidates: name == model.importTarget ? model.importCandidates.count : nil,
+                    settings: model.bottleSettings[name] ?? BottleSettings(),
+                    settingsBlockedBy: model.settingsProblem(name),
                     importing: { model.beginImport(into: name) },
                     installing: { model.beginInstall(into: name) },
                     addingTitle: { model.beginAddTitle(into: name) },
                     renaming: { model.beginRename(bottle) },
                     deleting: { model.isDeletingBottle = true },
-                    runTool: { model.runTool($0, in: name) }
+                    runTool: { model.runTool($0, in: name) },
+                    settingMsync: { model.setMsync($0, in: bottle) }
                 )
             }
         case .none:

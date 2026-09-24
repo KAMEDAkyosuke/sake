@@ -148,10 +148,32 @@ Mach-O. **Nothing has been run against it.**
 The three above are sake's, and `Bottle.environment` puts them on everything the engine
 runs. Anything else is one title's business, and since 2026-09-21 a title carries its own
 `KEY=VALUE` pairs. They go in underneath the bottle's, which is composed afterwards, so the
-five names `Bottle.environment` writes — `WINEPREFIX`, `WINEDLLOVERRIDES`, `WINEDEBUG`,
-`WINE_SIMULATE_WRITECOPY` and `CX_APPLEGPTK_LIBD3DSHARED_PATH` — win. The sheet refuses
-those by name rather than accepting a value it would then quietly ignore, because a run that
-behaves as though a variable had been set is the worse of the two failures.
+six names `Bottle.environment` writes — `WINEPREFIX`, `WINEDLLOVERRIDES`, `WINEDEBUG`,
+`WINE_SIMULATE_WRITECOPY`, `CX_APPLEGPTK_LIBD3DSHARED_PATH` and `WINEMSYNC` — win. The sheet
+refuses those by name rather than accepting a value it would then quietly ignore, because a
+run that behaves as though a variable had been set is the worse of the two failures.
+
+### `WINEMSYNC` belongs to the bottle, because wineserver holds it
+
+wineserver decides msync when it starts, and every process in the prefix has to agree.
+Measured in sake on 2026-09-23, against its own engine and the default bottle:
+
+- **A client that disagrees exits 1 during startup**, from `msync_init()` in ntdll. The
+  reason — `Failed bootstrap_look_up for wine-<inode>-msync` one way round, `Server is
+  running with WINEMSYNC but this process is not` the other — is at `err`, so
+  `WINEDEBUG=-all` hides it and the library shows only `exited — status 1`.
+- **msync itself works**: Battle.net Launcher with `WINEMSYNC=1` came up healthy and
+  wineserver logged `msync: up and running.`
+- **As a title's variable, the mismatch is the normal case**: Battle.net.exe and
+  `Agent.exe` outlive the launcher and keep a wineserver without msync up, so adding
+  `WINEMSYNC=1` and pressing Play again fails.
+
+So since 2026-09-23 it is a switch on the bottle, kept in `sake-bottle.json` (see
+`layout.md`). `Bottle.environment` sets it on everything the engine runs and removes it
+when off, so neither Wine's own tools nor a value exported in sake's shell can split the
+bottle. Changing it takes the bottle down first and is refused while a title sake started
+is running. A title that still carries `WINEMSYNC` in its own options does not start until
+it is taken out.
 
 **`MTL_HUD_ENABLED=1` draws Metal's performance HUD, and D3DMetal adds a section of its
 own to it.** The HUD belongs to the OS, so anything rendering through Metal can show it;
