@@ -12,10 +12,23 @@ those were measured in sake.
 /Applications/Sake.app                       the app, and nothing else
 ~/Library/Sake/
     engine/                                  Wine, its libraries and D3DMetal, 1.1 GB
+    engine/lib/xgameruntime/                 sake's GDK runtime, the licence of the
+                                             libHttpClient in it, and a hash of what it was
+                                             built from — see gdk.md
     bottles/<name>/                          one prefix each, and the games in them; empty
                                              is 1 GB, and a cloned game adds nothing
     bottles/<name>/sake-titles.json          what was added to the library by hand, if
                                              anything — see below
+    bottles/<name>/drive_c/windows/system32/xgameruntime.dll
+                                             a copy of the runtime, with the licence beside
+                                             it, put there before anything starts in the
+                                             bottle — see gdk.md
+    bottles/<name>/drive_c/users/crossover/AppData/Local/Sake/<title ID>/
+                                             where a GDK title's runtime asks sake for its
+                                             user, and the session sake answers with —
+                                             see gdk.md
+    sign-ins/<MSAAppId>.json                 what signs a person in to Xbox Live again,
+                                             readable by them alone — see gdk.md
 ~/Library/Caches/Sake/
     dl/ sources/ toolchain/ build/           downloads and build intermediates, ~4 GB
     d3dmetal/                                Apple's redist/lib, kept so that the image
@@ -27,6 +40,17 @@ the Trash. Those two directories are the whole of it, and both go to the Trash l
 does. **Sake.app is not one of them** — it is running at the time, and a bundle in
 `/Applications` is the user's to drag away; the sheet says so rather than leaving the user
 to wonder whether the app deleted itself.
+
+Those two are not the whole of what sake leaves, which this section did not say until
+2026-09-29. AppKit keeps the windows' frames and the open panel's last folder in
+`~/Library/Preferences/dev.typester.sake.plist`, and `SourceFetcher`'s default URLSession
+left `~/Library/HTTPStorages/dev.typester.sake` and `~/Library/Caches/dev.typester.sake`
+on 2026-09-20. Uninstalling does not take them yet. The sign-in uses a session that keeps
+nothing on disk, so it adds nothing there.
+
+What the sign-in keeps is inside `~/Library/Sake`, in `sign-ins/`, so uninstalling lists it
+on a line of its own and takes it to the Trash with the rest, refresh tokens and all, where
+emptying the Trash is what finally removes them. Added 2026-09-30.
 
 Run for real on 2026-09-19 against the tree described above, and put back afterwards:
 

@@ -25,6 +25,10 @@ public struct Paths: Sendable, Equatable {
     public var engine: URL { root.appending(path: "engine") }
     public var bottles: URL { root.appending(path: "bottles") }
 
+    /// What signs a person in to Xbox Live again without a code. Not in the Keychain while
+    /// sake is signed ad hoc, and never in a bottle. See docs/gdk.md.
+    public var signIns: URL { root.appending(path: "sign-ins") }
+
     /// One bottle is one `WINEPREFIX`, with the games inside it in `drive_c`.
     public func bottle(named name: String) -> URL { bottles.appending(path: name) }
 
@@ -36,6 +40,12 @@ public struct Paths: Sendable, Equatable {
     /// Wine is built out of tree, which leaves its unpacked source as it came out of the
     /// tarball -- the only copy sake has of it.
     public var wineBuild: URL { build.appending(path: "wine") }
+
+    /// sake's own `xgameruntime.dll`, with libHttpClient's licence beside it: the copy every
+    /// bottle's `system32` is given one of. See docs/gdk.md.
+    public var gdkRuntime: URL { engine.appending(path: "lib/xgameruntime") }
+
+    public var gdkRuntimeBuild: URL { build.appending(path: "xgameruntime") }
 
     /// Wine's unix-side libraries, and the only place anything `dlopen`s the engine's dylibs
     /// from, so this is the directory a `@loader_path` soname resolves against. Nothing sits

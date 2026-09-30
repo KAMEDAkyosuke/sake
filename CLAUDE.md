@@ -100,6 +100,13 @@ messages. Measured 2026-09-19 (CLT 27.0, Swift 6.4, macOS 27.0):
 stays thin. The tests exercise `SakeKit`, so logic that drifts into a view is logic that
 stops being tested.
 
+`xgameruntime/` is not Swift and SwiftPM does not build it: it is the Windows DLL that GDK
+titles load in place of Gaming Services, C++ compiled with the engine's llvm-mingw by its own
+`Makefile`. `scripts/build-app.sh` copies it into the bundle, and setup runs that `Makefile`
+from there; its `README.md` has the commands for a build by hand. `scripts/test.sh` runs the
+`Makefile` with a stand-in compiler, which pins the variables the app hands it and nothing the
+C++ does; a title in a bottle is what tests that, and `docs/gdk.md` records what it measured.
+
 ## Deployment target
 
 macOS 15, in both `Package.swift` and `Info.plist.template` — keep them in step. The
@@ -120,6 +127,7 @@ implementing anything it covers.
 | `docs/roadmap.md` | phases, and the settled boundary between Swift and subprocesses |
 | `docs/wine-build.md` | building Wine; the configure flags that must not be removed |
 | `docs/runtime.md` | the three settings games need, the Play-button root cause, controllers, failure states |
+| `docs/gdk.md` | GDK titles: the runtime DLL and the sign-in sake provides in place of Gaming Services |
 | `docs/licensing.md` | what may not be redistributed, and what the app may not do for the user |
 | `docs/layout.md` | on-disk layout, why nothing mutable goes in the bundle, relocatability |
 | `docs/releasing.md` | how a release is cut, and the three things it needs that are not in this repository |

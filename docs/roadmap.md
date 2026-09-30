@@ -228,6 +228,22 @@ every string. The panes scroll now, which keeps the modifier — it is there so 
 wraps instead of being truncated — and bounds what the demand can do. The setup wizard had
 been doing this from the start.
 
+### Phase 5 — GDK titles (under way)
+
+A runtime DLL and a sign-in of sake's own, so that a title built on Microsoft's GDK runs
+without Gaming Services or a community stand-in. `gdk.md` has what was measured, the design
+and the order. The first piece is in: two WinHTTP stubs, without which the GDK's HTTP client
+drops every request (2026-09-29, `runtime.md`). The second is the runtime itself, in
+`xgameruntime/`: built by hand and put in a bottle's `system32` the same day, it took
+Minecraft Dungeons II past its launcher's check and as far as its sign-in with no stand-in.
+The third is the sign-in, in SakeKit: that night it signed a real account in to Xbox Live with
+the title's own app ID. On 2026-09-30 the runtime and the sign-in together took Minecraft
+Dungeons II to character select with no stand-in: the runtime hands the game its user and
+tokens and asks sake through the bottle at the game's first token request, and sake shows the
+code the first time and nothing after. The fourth came the same day: setup builds the runtime
+in a step of its own, and sake puts it in every bottle before it starts anything there, which
+took the game to character select with nothing done by hand.
+
 ## The Swift/subprocess boundary
 
 Settled during planning on 2026-09-18, recorded here so it is not relitigated.
@@ -294,6 +310,7 @@ easier to read than it was interleaved with `configure` flags.
   cost a measurement on 2026-09-21: a row addressed by index was no longer the row it was.
 - **Where the CrossOver version lives.** It is a knob users may need — a newer CrossOver may
   fix or break a given game — but exposing it invites them to pick a combination nobody has
-  run. Steam gave the knob a concrete reason on 2026-09-20: two of sake's patches are
-  upstream Wine commits that CrossOver's next Wine rebase will contain, and the day the
-  tarball sake builds is based on wine-11.11 or later they are to be deleted, not rebased.
+  run. Steam gave the knob a concrete reason on 2026-09-20: some of sake's patches are
+  upstream Wine commits that CrossOver's next Wine rebase will contain — two then, four since
+  the WinHTTP stubs on 2026-09-29 — and the day the tarball sake builds is based on
+  wine-11.11 or later they are all to be deleted, not rebased.
