@@ -7,7 +7,9 @@ own `COPYING.LIB`, which is the licence these files are under. See `docs/licensi
 They apply to the `sources/wine` tree out of CodeWeavers' CrossOver tarball, with `-p1`.
 `WinePatcher` applies every `*.patch` here in name order before Wine is configured, and asks
 `patch` itself whether one is already in rather than keeping a marker — if it reverses
-cleanly it is applied. That stays true as patches are added or changed.
+cleanly it is applied. That stays true as patches are added or changed. The engine keeps a
+hash of the patches it was built from, and one built from others is built again from a
+fresh tree (`docs/wine-build.md`).
 
 Each file carries its reasoning in a prose header above the diff. **Read that before
 touching the patch**: sake's own patches were found by measurement, and the header is where
@@ -16,13 +18,13 @@ worked.
 
 Three kinds of file live here, and the header of each says which it is:
 
-- **sake's own** (`0001`, `0002`, `0006`, `0007`): written here, against something measured
-  here.
-- **Upstream Wine commits carried early** (`0003`, `0004`): named by hash and author in the
-  header, applied as upstream wrote them apart from hunks the header says were moved. They
-  exist because CrossOver's sources lag upstream, and **each is dropped the moment the
-  CrossOver tarball sake builds already contains it** — the header names the Wine release
-  to look for.
+- **sake's own** (`0001`, `0002`, `0006`, `0009`, `0010`): written here, against something
+  measured here.
+- **Upstream Wine commits carried early** (`0003`, `0004`, `0007`, `0008`): named by hash
+  and author in the header, applied as upstream wrote them apart from hunks the header says
+  were moved. They exist because CrossOver's sources lag upstream, and **each is dropped the
+  moment the CrossOver tarball sake builds already contains it** — the header names the Wine
+  release to look for.
 - **Someone else's patch** (`0005`, from Wine bug 60263): the author's own header is kept
   verbatim below sake's, because it carries their licence statement and their account of
   how it was written. Rebased, not rewritten.

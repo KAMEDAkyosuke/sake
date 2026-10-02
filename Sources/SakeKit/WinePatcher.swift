@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public struct WinePatch: Sendable, Equatable, Identifiable {
@@ -85,6 +86,18 @@ public struct WinePatcher: Sendable {
         return patches
     }
 
+    /// Every patch's name and contents as one hash, which the engine keeps to say what it was
+    /// built from, or `nil` when there are no patches to hash. See docs/wine-build.md.
+    public func fingerprint() -> String? {
+        guard let patches = try? patches() else { return nil }
+        var hasher = SHA256()
+        for patch in patches {
+            guard let digest = try? SourceFetcher.sha256(of: patch.url) else { return nil }
+            hasher.update(data: Data("\(patch.id)\0\(digest)\n".utf8))
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
     /// Apply every patch to `tree`, skipping the ones already in it.
     ///
     /// Whether a patch is already applied is asked of `patch` itself -- if it reverses
@@ -164,7 +177,9 @@ public struct WinePatcher: Sendable {
     private func runs(
         _ patch: WinePatch, on tree: URL, reversed: Bool, dryRun: Bool
     ) async throws -> Bool {
-        var arguments = ["-d", tree.path, "-p1", "-s", "-i", patch.url.path]
+        // No fuzz: with patch's default, a hunk whose outer context is not in this tree
+        // applies wherever the rest of it fits and reports success. See docs/wine-build.md.
+        var arguments = ["-d", tree.path, "-p1", "-F0", "-s", "-i", patch.url.path]
         // --force so that a reversed patch is reported in the exit status instead of
         // stopping to ask, which would hang a build with no terminal to answer it.
         if reversed { arguments += ["-R", "--force"] }

@@ -25,6 +25,10 @@ public struct Paths: Sendable, Equatable {
     public var engine: URL { root.appending(path: "engine") }
     public var bottles: URL { root.appending(path: "bottles") }
 
+    /// What signs a person in to Xbox Live again without a code. Not in the Keychain while
+    /// sake is signed ad hoc, and never in a bottle. See docs/gdk.md.
+    public var signIns: URL { root.appending(path: "sign-ins") }
+
     /// One bottle is one `WINEPREFIX`, with the games inside it in `drive_c`.
     public func bottle(named name: String) -> URL { bottles.appending(path: name) }
 
@@ -37,6 +41,12 @@ public struct Paths: Sendable, Equatable {
     /// tarball -- the only copy sake has of it.
     public var wineBuild: URL { build.appending(path: "wine") }
 
+    /// sake's own `xgameruntime.dll`, with libHttpClient's licence beside it: the copy every
+    /// bottle's `system32` is given one of. See docs/gdk.md.
+    public var gdkRuntime: URL { engine.appending(path: "lib/xgameruntime") }
+
+    public var gdkRuntimeBuild: URL { build.appending(path: "xgameruntime") }
+
     /// Wine's unix-side libraries, and the only place anything `dlopen`s the engine's dylibs
     /// from, so this is the directory a `@loader_path` soname resolves against. Nothing sits
     /// beside it for i386: under WoW64 the unix side is x86_64 only.
@@ -46,7 +56,7 @@ public struct Paths: Sendable, Equatable {
     public var gameBundle: URL { engine.appending(path: "SakeGame.app") }
 
     /// `<key>/<program>.app` per program a title starts, keyed by a hash of the exe's path.
-    /// The patched ntdll makes these (`patches/0007`); sake only passes the directory as
+    /// The patched ntdll makes these (`patches/0010`); sake only passes the directory as
     /// `SAKE_GAME_BUNDLES`.
     public var programBundles: URL { engine.appending(path: "SakePrograms") }
 

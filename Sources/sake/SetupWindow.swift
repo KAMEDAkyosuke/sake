@@ -56,7 +56,7 @@ struct SetupWindow: View {
         switch model.state(of: candidate) {
         case .done: "checkmark.circle.fill"
         case .blocked: "lock"
-        case .ready: candidate == step ? "arrowtriangle.right.fill" : "circle"
+        case .ready, .outdated: candidate == step ? "arrowtriangle.right.fill" : "circle"
         }
     }
 
@@ -75,7 +75,7 @@ struct SetupWindow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if case .blocked(let why) = model.state(of: step) {
+            if let why = model.state(of: step).reason {
                 Text(why)
                     .font(.callout)
                     .foregroundStyle(.orange)
@@ -101,6 +101,7 @@ struct SetupWindow: View {
         case .prefix: PrefixView(statuses: model.prefix)
         case .wine: WineView(status: model.wine)
         case .d3dMetal: D3DMetalView(status: model.d3dMetal)
+        case .gdkRuntime: GDKRuntimeView(status: model.gdkRuntime)
         case .bottle: BottleView(name: Bottle.defaultName, status: model.bottleStatus[Bottle.defaultName])
         }
     }
@@ -194,6 +195,13 @@ struct SetupWindow: View {
                     copies it out.
                     """,
                  verb: "Install")
+        case .gdkRuntime:
+            Copy(title: "GDK Runtime",
+                 explanation: """
+                    What games built on Microsoft's GDK load in place of Xbox Gaming Services. \
+                    Seconds.
+                    """,
+                 verb: "Build")
         case .bottle:
             Copy(title: "Bottle",
                  explanation: """

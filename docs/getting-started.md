@@ -8,7 +8,7 @@ Diablo IV on an Apple silicon Mac, from nothing installed to a character on scre
 - macOS 15 or newer, and the Xcode Command Line Tools — `xcode-select --install`.
 - Apple's Game Porting Toolkit `.dmg` — **4.0 beta 2**, which is what the engine here is built
   against — from <https://developer.apple.com/download/all/>. A free Apple ID is enough. sake
-  cannot fetch this for you; `docs/licensing.md` says why.
+  cannot fetch this for you; [licensing.md](licensing.md) says why.
 - A Battle.net account that owns Diablo IV, and Blizzard's installer for the client. sake does
   not fetch that either.
 - About 10 GB free for sake, and about 90 GB more for the game.
@@ -28,8 +28,9 @@ Privacy & Security, or install with `--no-quarantine`.
 
 ## 2. Set sake up
 
-Open sake. The wizard opens itself until the six steps are done; afterwards **Set Up…** in the
-toolbar brings it back.
+Open sake. The wizard opens itself until the seven steps are done; afterwards **Set Up…** in the
+toolbar brings it back. If the sidebar says **Setup needs attention** after an update, click it: the
+wizard opens on the step to do again.
 
 ### This Mac
 
@@ -65,9 +66,15 @@ Press **Build** and leave it alone. The app warns of tens of minutes; on ten cor
 Download Game Porting Toolkit 4.0 beta 2 from Apple, open the `.dmg`, and press **Install**. sake
 copies what it needs out of the image and unmounts it. You only need the image once.
 
+### GDK Runtime
+
+![The GDK Runtime step, before the build](../assets/getting-started/06-gdk-runtime.png)
+
+Press **Build**. Seconds. Diablo IV does not use it; games built on Microsoft's GDK do.
+
 ### Bottle
 
-![The Bottle step, before the bottle is made](../assets/getting-started/06-bottle.png)
+![The Bottle step, before the bottle is made](../assets/getting-started/07-bottle.png)
 
 Press **Create**. A bottle is one Windows environment and the game goes inside it. This one is
 called `default`.
@@ -76,12 +83,12 @@ called `default`.
 
 Download `Battle.net-Setup.exe` from Blizzard, then select the bottle in the library.
 
-![The bottle selected, with its buttons](../assets/getting-started/07-bottle.png)
+![The bottle selected, with its buttons](../assets/getting-started/08-bottle.png)
 
 **Install from an Installer…**, choose the `.exe`, **Install**. Blizzard's installer runs in a
 window of its own; click through it as you would on Windows.
 
-![The Install from an Installer sheet](../assets/getting-started/08-install.png)
+![The Install from an Installer sheet](../assets/getting-started/09-install.png)
 
 When it closes, the sheet offers **Add a Title…**, which is the next step.
 
@@ -90,22 +97,22 @@ instead. It clones the game rather than copying it, so it costs no disk.
 
 ## 4. Add the launcher as a title
 
-![The Add a Title sheet with the launcher chosen and its arguments filled in](../assets/getting-started/09-add-title.png)
+![The Add a Title sheet with the launcher chosen and its arguments filled in](../assets/getting-started/10-add-title.png)
 
 **Add a Title…**, then **Choose Program…**. The panel opens inside the bottle; the launcher is
 `Program Files (x86)/Battle.net/Battle.net Launcher.exe`. The name and the arguments fill in by
 themselves. **Add**.
 
 **Leave the arguments alone.** Without `--in-process-gpu` the login form is drawn but never
-appears, and without the two ANGLE flags the client's GPU process exits. `docs/runtime.md` has
-the measurements.
+appears, and without the two ANGLE flags the client's GPU process exits.
+[runtime.md](runtime.md#three-settings-every-run-needs) has the measurements.
 
 ## 5. Install the game
 
 Select the title and press **Play**. Sign in, and install Diablo IV from inside the client:
 about 90 GB.
 
-![A title selected, with Play and the arguments it starts with](../assets/getting-started/10-title.png)
+![A title selected, with Play and the arguments it starts with](../assets/getting-started/11-title.png)
 
 ## 6. Play
 
@@ -122,5 +129,4 @@ Nothing to set up. The engine is built with SDL2, so a controller should work.
 - Every run writes a log under `~/Library/Caches/Sake/build` — `title-<id>.log` for a title,
   `install-<name>.log` for an installer. The window shows only the last line of it.
 - **Wine Tools** on the bottle opens winecfg, regedit, the uninstaller and the task manager.
-- `docs/runtime.md` tells four failure states apart by thread count, memory and Metal mappings.
-  Read that before deciding a build is broken.
+- [Troubleshooting](troubleshooting.md) has what to try next.

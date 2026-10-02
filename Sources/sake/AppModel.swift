@@ -55,6 +55,13 @@ final class AppModel {
     var prefix: [String: PrefixStatus] = [:]
     var wine: WineStatus?
     var d3dMetal: D3DMetalStatus?
+    var gdkRuntime: GDKRuntimeStatus?
+
+    /// Setup as ``survey()`` last read it. A view that asks ``Setup`` itself reads the disk,
+    /// which SwiftUI does not watch, so the library went on saying a step was left after the
+    /// wizard had done it.
+    var setupIsComplete = false
+    var setupNeedsAttention = false
 
     /// Keyed by bottle name, the way `sources` and `prefix` are keyed by component: the
     /// wizard watches `default` while the library may be making another one.
@@ -122,10 +129,17 @@ final class AppModel {
     /// installed in two bottles, so an id on its own names two different things.
     var titleStatus: [RunningTitle: TitleStatus] = [:]
 
+    /// What the sign-in panel shows while a GDK title waits for its user.
+    var signInPrompt: SignInPrompt?
+    @ObservationIgnored private var watchingSignIns: Task<Void, Never>?
+    @ObservationIgnored private var signingIn: Task<Void, Never>?
+    @ObservationIgnored private let signInPanel = SignInPanel()
+
     let fetching = Run()
     let building = Run()
     let buildingWine = Run()
     let installing = Run()
+    let buildingRuntime = Run()
     let creating = Run()
     let changingBottle = Run()
     let importing = Run()
@@ -198,6 +212,7 @@ final class AppModel {
         case .prefix: building.isRunning
         case .wine: buildingWine.isRunning
         case .d3dMetal: installing.isRunning
+        case .gdkRuntime: buildingRuntime.isRunning
         case .bottle: creating.isRunning
         }
     }
@@ -218,6 +233,9 @@ final class AppModel {
         case .d3dMetal:
             installing.start({ for await e in D3DMetalInstaller(paths: self.paths).install() { self.apply(e) } },
                              then: survey)
+        case .gdkRuntime:
+            buildingRuntime.start({ for await e in GDKRuntimeBuilder(paths: self.paths).build() { self.apply(e) } },
+                                  then: survey)
         case .bottle:
             create(Bottle.defaultName)
         }
@@ -230,6 +248,7 @@ final class AppModel {
         case .prefix: building.stop()
         case .wine: buildingWine.stop()
         case .d3dMetal: installing.stop()
+        case .gdkRuntime: buildingRuntime.stop()
         case .bottle: creating.stop()
         }
     }
@@ -250,12 +269,18 @@ final class AppModel {
         for recipe in BuildRecipe.all where recipe.isBuilt(in: paths.engine) {
             prefix[recipe.id] = .alreadyBuilt
         }
-        if WineBuilder(paths: paths).isBuilt { wine = .alreadyBuilt }
+        let wineBuilder = WineBuilder(paths: paths)
+        if wineBuilder.isBuilt {
+            wine = .alreadyBuilt
+        } else if wineBuilder.isOutdated {
+            wine = .outdated
+        }
 
         let installer = D3DMetalInstaller(paths: paths)
         if installer.isInstalled {
             d3dMetal = .alreadyInstalled(version: installer.installedVersion())
         }
+        if GDKRuntimeBuilder(paths: paths).isBuilt { gdkRuntime = .alreadyBuilt }
 
         bottles = Bottle.all(in: paths)
         for bottle in bottles where bottleStatus[bottle.name] == nil {
@@ -284,6 +309,9 @@ final class AppModel {
         measureSelectedBottle()
 
         surveyImportSources()
+
+        setupIsComplete = setup.isComplete(machineIsReady: machineIsReady)
+        setupNeedsAttention = setup.needsAttention(machineIsReady: machineIsReady)
     }
 
     /// Called from ``survey()`` and again when the selection moves: without the second
@@ -468,7 +496,10 @@ final class AppModel {
         case .phase(let phase): wine = .working(phase: phase.rawValue, line: "")
         case .output(let line):
             if case .working(let phase, _) = wine { wine = .working(phase: phase, line: line) }
-        case .installed(let version): wine = .built(version: version)
+        case .installed(let version):
+            wine = .built(version: version)
+            // make install puts Wine's own d3d DLLs back, so what survey() found is gone.
+            if !D3DMetalInstaller(paths: paths).isInstalled { d3dMetal = nil }
         case .failed(let reason, _): wine = .failed(reason)
         case .finished: break
         }
@@ -483,6 +514,19 @@ final class AppModel {
             if case .working(let phase, _) = d3dMetal { d3dMetal = .working(phase: phase, item: item) }
         case .installed(let version): d3dMetal = .installed(version: version)
         case .failed(let reason): d3dMetal = .failed(reason)
+        case .finished: break
+        }
+    }
+
+    private func apply(_ event: GDKRuntimeEvent) {
+        switch event {
+        case .alreadyBuilt: gdkRuntime = .alreadyBuilt
+        case .started: gdkRuntime = .working(phase: "starting", line: "")
+        case .phase(let phase): gdkRuntime = .working(phase: phase.rawValue, line: "")
+        case .output(let line):
+            if case .working(let phase, _) = gdkRuntime { gdkRuntime = .working(phase: phase, line: line) }
+        case .built: gdkRuntime = .built
+        case .failed(let reason, _): gdkRuntime = .failed(reason)
         case .finished: break
         }
     }
@@ -741,6 +785,7 @@ final class AppModel {
         prefix = [:]
         wine = nil
         d3dMetal = nil
+        gdkRuntime = nil
         bottleStatus = [:]
         bottleSizes = [:]
         titleStatus = [:]
@@ -797,6 +842,51 @@ final class AppModel {
         case .exited(let status): titleStatus[running] = .exited(status: status)
         case .failed(let reason, _): titleStatus[running] = .failed(reason)
         case .finished: break
+        }
+    }
+
+    /// Once, however often the library appears: answers each GDK title that asks for its
+    /// user, one request at a time. See docs/gdk.md.
+    func watchForSignIns() {
+        guard watchingSignIns == nil else { return }
+        watchingSignIns = Task {
+            for await request in GDKMailbox.watch(paths) {
+                let work = Task {
+                    for await event in GDKSignIn(request: request, paths: self.paths).run() {
+                        self.apply(event)
+                    }
+                }
+                signingIn = work
+                await work.value
+                signingIn = nil
+            }
+        }
+    }
+
+    /// The game is told, and goes on without a user.
+    func cancelSignIn() {
+        signingIn?.cancel()
+        dismissSignIn()
+    }
+
+    func dismissSignIn() {
+        signInPrompt = nil
+        signInPanel.close()
+    }
+
+    private func apply(_ event: GDKSignInEvent) {
+        switch event {
+        case .code(let code, let title):
+            signInPrompt = .code(code, title: title)
+            signInPanel.show(self)
+            NSWorkspace.shared.open(code.verificationURL)
+        case .failed(let reason, let title):
+            signInPrompt = .failed(reason: reason, title: title)
+            signInPanel.show(self)
+        case .signedIn, .cancelled:
+            dismissSignIn()
+        case .finished:
+            break
         }
     }
 }

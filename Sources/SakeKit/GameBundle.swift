@@ -4,7 +4,7 @@ import Foundation
 /// a process's bundle and the engine's `wine` has none.
 ///
 /// A bundle that merely starts `wine` is not enough: Wine starts every child process from its
-/// own loader, so the loader itself has to be in `Contents/MacOS`. `patches/0007` gives each
+/// own loader, so the loader itself has to be in `Contents/MacOS`. `patches/0010` gives each
 /// program a title starts a bundle of its own mirrored from this one, so this one is shared
 /// and never seen. It lives in the engine so that uninstalling the engine takes it with it.
 /// See docs/runtime.md.
