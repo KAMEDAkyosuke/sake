@@ -139,7 +139,7 @@ private func read(_ tree: URL) throws -> String {
     try String(contentsOf: tree.appending(path: "dlls/ntdll/unix/loader.c"), encoding: .utf8)
 }
 
-@Test func theRepositoryCarriesTheSevenPatchesAndSaysTheyAreNotMIT() throws {
+@Test func theRepositoryCarriesTheTenPatchesAndSaysTheyAreNotMIT() throws {
     let patcher = WinePatcher(directory: repositoryPatches)
     let patches = try patcher.patches()
 
@@ -150,14 +150,18 @@ private func read(_ tree: URL) throws -> String {
         "0004-winemac-cross-process-MetalViewSwapChain-via-CALayerHost.patch",
         "0005-winemac-cross-process-child-window-swapchains.patch",
         "0006-winemac-give-D3DMetal-a-hosted-swapchain-for-a-window-it-does-not-own.patch",
-        "0007-ntdll-start-each-program-from-a-game-bundle-named-after-it.patch",
+        "0007-winhttp-stub-WINHTTP_OPTION_DECOMPRESSION.patch",
+        "0008-winhttp-stub-WINHTTP_OPTION_IPV6_FAST_FALLBACK.patch",
+        "0009-ntdll-leave-AppleDouble-files-out-of-directory-listings.patch",
+        "0010-ntdll-start-each-program-from-a-game-bundle-named-after-it.patch",
     ])
     // Each one says what it does on its first line, which is where the reasoning starts,
     // and names the module it changes the way a Wine commit does.
     for patch in patches {
         let subject = patch.subject
         #expect(
-            subject.hasPrefix("ntdll: ") || subject.hasPrefix("winemac: "),
+            subject.hasPrefix("ntdll: ") || subject.hasPrefix("winemac: ")
+                || subject.hasPrefix("winhttp: "),
             "\(patch.id): \(subject)"
         )
     }
@@ -169,7 +173,7 @@ private func read(_ tree: URL) throws -> String {
     #expect(licence.contains("Version 2.1"))
 }
 
-@Test func nothingOutsideNtdllAndTheMacDriverIsPatched() throws {
+@Test func nothingOutsideNtdllTheMacDriverAndWinHTTPIsPatched() throws {
     for patch in try WinePatcher(directory: repositoryPatches).patches() {
         let targets = patch.targets
 
@@ -177,9 +181,11 @@ private func read(_ tree: URL) throws -> String {
         for target in targets {
             // Widened from ntdll alone on 2026-09-20, as a decision: Steam's client draws
             // in one process and owns its window in another, and the driver that has to
-            // carry that across is winemac.drv. docs/runtime.md has the measurement.
+            // carry that across is winemac.drv. Widened to winhttp on 2026-09-29 for two
+            // upstream stubs XCurl cannot do without. docs/runtime.md has both measurements.
             #expect(
-                target.hasPrefix("dlls/ntdll/") || target.hasPrefix("dlls/winemac.drv/"),
+                target.hasPrefix("dlls/ntdll/") || target.hasPrefix("dlls/winemac.drv/")
+                    || target.hasPrefix("dlls/winhttp/"),
                 "\(patch.id) reaches \(target)"
             )
         }
@@ -215,6 +221,34 @@ private func read(_ tree: URL) throws -> String {
         try await WinePatcher(directory: patches).apply(to: tree)
     }
     #expect(try read(tree) == "something\nelse\nentirely\n")
+}
+
+@Test func aHunkWhoseOuterContextIsMissingIsRefusedRatherThanFuzzedIn() async throws {
+    let root = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (tree, patches) = try makeTree(in: root, content: "one\ntwo\nthree\nfour\nfive\nsix\n")
+    // Upstream's hunk for 0008 had this shape against the 26.3.0 tree: the default fuzz
+    // drops the two outer lines of context and applies the rest wherever it fits.
+    try """
+        Its outer context is not in the tree.
+
+        --- a/dlls/ntdll/unix/loader.c
+        +++ b/dlls/ntdll/unix/loader.c
+        @@ -1,6 +1,7 @@
+         missing
+         absent
+         three
+        +inserted
+         four
+         five
+         six
+
+        """.write(to: patches.appending(path: "0001-fake.patch"), atomically: true, encoding: .utf8)
+
+    await #expect(throws: PatchError.doesNotApply(patch: "0001-fake.patch", tree: tree.path)) {
+        try await WinePatcher(directory: patches).apply(to: tree)
+    }
+    #expect(try read(tree) == "one\ntwo\nthree\nfour\nfive\nsix\n")
 }
 
 @Test func aStackOnOneFileIsRecognisedOnTheSecondRun() async throws {
@@ -297,4 +331,27 @@ private func read(_ tree: URL) throws -> String {
     await #expect(throws: PatchError.directoryMissing) {
         try await WinePatcher(directory: nil).apply(to: tree)
     }
+}
+
+@Test func theFingerprintFollowsThePatchesAndNothingElse() throws {
+    let root = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, patches) = try makeTree(in: root)
+    let patcher = WinePatcher(directory: patches)
+    let first = try #require(patcher.fingerprint())
+
+    try "What this directory is.\n".write(to: patches.appending(path: "README.md"), atomically: true, encoding: .utf8)
+    #expect(patcher.fingerprint() == first)
+
+    let patch = patches.appending(path: "0001-fake.patch")
+    let reworded = try String(contentsOf: patch, encoding: .utf8)
+        .replacingOccurrences(of: "Say what it does here", with: "Say it differently")
+    try reworded.write(to: patch, atomically: true, encoding: .utf8)
+    let second = try #require(patcher.fingerprint())
+    #expect(second != first)
+
+    try reworded.write(to: patches.appending(path: "0002-another.patch"), atomically: true, encoding: .utf8)
+    #expect(patcher.fingerprint() != second)
+
+    #expect(WinePatcher(directory: nil).fingerprint() == nil)
 }

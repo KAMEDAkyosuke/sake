@@ -105,6 +105,7 @@ public struct TitleLauncher: Sendable {
                     let log = try LogFile(at: logURL)
                     defer { log.close() }
 
+                    GDKRuntime(paths: paths).place(in: bottle, loggingTo: log)
                     let command = self.command(wine: self.gameWine())
                     log.write("=== launch \(command.arguments.joined(separator: " "))\n")
                     continuation.yield(.started(title))
